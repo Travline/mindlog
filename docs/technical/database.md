@@ -29,7 +29,6 @@ Estas son las listas de un tablero (En Progreso, Terminado, etc)
   - column_id AUTINCREMENT PK
   - board_id INTEGER NOT NULL FK
   - title TEXT NOT NULL
-  - position INTEGER NOT NULL
 
 Los tickets de las tareas del proyecto
 - cards
@@ -38,7 +37,6 @@ Los tickets de las tareas del proyecto
   - title TEXT NOT NULL
   - description TEXT
   - priority TEXT DEFAULT 'Media' CHECK ('Baja', 'Media', 'Alta')
-  - position INTEGER NOT NULL
   - due_date DATETIME
   - created_at DATETIME
 
@@ -51,7 +49,27 @@ Posts del registro de decisiones del proyecto
 - posts
   - post_id AUTOINCREMENT PK
   - user_id TEXT NOT NULL FK
+  - board_id INTEGER NOT NULL FK
   - title TEXT NOT NULL
   - content TEXT NOT NULL
   - created_at DATETIME
   
+# Relación entre tablas  
+| Relación                     | Cardinal |
+| ---------------------------- | -------- |
+| `users` → `boards`           | 1:N      |
+| `users` → `board_members`    | 1:N      |
+| `boards` → `board_members`   | 1:N      |
+| `boards` → `board_columns`   | 1:N      |
+| `board_columns` → `cards`    | 1:N      |
+| `cards` → `card_assignments` | 1:N      |
+| `users` → `card_assignments` | 1:N      |
+| `users` → `posts`            | 1:N      |
+| `boards` → `posts`           | 1:N      |
+
+# Índices
+Para mantener consultas rápidas cuando escala el número de filas de registros se crearán los siguientes índices
+- idx_boards_owner_id (owner_id)
+- idx_board_columns_board_id (board_id)
+- idx_cards_column_id (column_id)
+- idx_posts_board_id (board_id)
