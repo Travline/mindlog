@@ -2,10 +2,13 @@
 Se utilizará JWT para el manejo de sesiones, a diferencia de web no se guardará en cookies ya que Expo cuenta con un plugin `expo-secure-store` con el que se puede acceder a un key value que el mismo dispositivo cifra.
 
 ```plaintext
-Formulario login/register -> Servidor responde con el token
-                                          |
-                                          v
-Manda token por headers   <-    Se guarda el secure store
+Formulario login/register
+          ↓
+Servidor responde con el token
+          ↓
+Se guarda el secure store
+          ↓
+Manda token por headers
 ```
 
 Para acceder a guardar u obtener el token se hace uso del `SecureStore` con las funciones
