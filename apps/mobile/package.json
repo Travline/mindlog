@@ -10,6 +10,7 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "@mindlog/types": "workspace:*",
     "@expo/html-elements": "0.12.5",
     "@expo/vector-icons": "^15.0.3",
     "@gluestack-ui/core": "5.0.0-alpha.0",
