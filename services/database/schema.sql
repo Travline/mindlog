@@ -8,6 +8,7 @@ CREATE TABLE users (
   user_id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
   username TEXT NOT NULL,
+  password TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

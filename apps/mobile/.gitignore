@@ -2,8 +2,6 @@
 
 # dependencies
 node_modules/
-pnpm-lock.yaml
-package-lock.json
 
 # Expo
 .expo/
@@ -37,11 +35,3 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-
-app-example
-
-# generated native folders
-/ios
-/android
-
-*/local.db

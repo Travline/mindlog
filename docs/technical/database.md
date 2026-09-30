@@ -7,6 +7,7 @@ Usuarios de todo el sistema, no habrá roles como tal
   - user_id TEXT PK (UUID)
   - email TEXT UNIQUE NOT NULL
   - username TEXT NOT NULL
+  - password TEXT NOT NULL
   - created_at DATETIME
 
 Tableros kanban de proyectos (cada tablero es un proyecto)

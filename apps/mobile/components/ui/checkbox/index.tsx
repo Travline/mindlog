@@ -27,7 +27,7 @@ const StyledUIIcon = styled(UIIcon, {
 });
 
 const IconWrapper = React.forwardRef<
-  any,
+  React.ComponentRef<typeof UIIcon>,
   React.ComponentPropsWithoutRef<typeof UIIcon>
 >(function IconWrapper({ ...props }, ref) {
   return <StyledUIIcon {...props} ref={ref} />;
@@ -122,18 +122,12 @@ const CheckboxLabel = React.forwardRef<
 type ICheckboxIconProps = React.ComponentPropsWithoutRef<
   typeof UICheckbox.Icon
 > &
-  VariantProps<typeof checkboxIconStyle> & {
-    size?: number;
-    height?: number;
-    width?: number;
-    className?: string;
-  };
+  VariantProps<typeof checkboxIconStyle>;
 
 const CheckboxIcon = React.forwardRef<
-  any,
+  React.ComponentRef<typeof UICheckbox.Icon>,
   ICheckboxIconProps
->(function CheckboxIcon({ className, size, ...props }: ICheckboxIconProps, ref) {
-  const iconProps = props as any;
+>(function CheckboxIcon({ className, size, ...props }, ref) {
   if (typeof size === 'number') {
     return (
       <UICheckbox.Icon
@@ -144,7 +138,7 @@ const CheckboxIcon = React.forwardRef<
       />
     );
   } else if (
-    (iconProps.height !== undefined || iconProps.width !== undefined) &&
+    (props.height !== undefined || props.width !== undefined) &&
     size === undefined
   ) {
     return (

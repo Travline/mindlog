@@ -4,10 +4,15 @@
 @import "nativewind/theme";
 
 /* ─── Theme: design tokens (light / dark) ─────────────────────────
+   Three selectors, two purposes:
    1. :root              — light defaults (all platforms)
-   2. @media dark :root  — dark defaults; nativewind maps this to
+   2. @media dark :root  — dark defaults; nativewind converts this to
                            Appearance.getColorScheme() on native.
-   3. :root.dark / :root.light — higher specificity for web class toggle. */
+                           On web it still fires based on OS preference.
+   3. :root.dark / :root.light — specificity (0,2,0), beats the media
+                           query (0,1,0) within the same layer, so the
+                           GluestackUIProvider class-based toggle always
+                           wins on web. Ignored on native (no DOM). */
 @layer theme {
   :root {
     --primary: 23 23 23;
@@ -51,6 +56,8 @@
     }
   }
 
+  /* Web-only: higher specificity (0,2,0) overrides the media query (0,1,0).
+     GluestackUIProvider adds .dark or .light to <html> on every toggle. */
   :root.dark {
     --primary: 255 245 245;
     --primary-foreground: 23 23 23;
@@ -92,6 +99,8 @@
   }
 }
 
+/* ─── Tailwind v4 color utilities ─────────────────────────────────
+   bg-primary, text-foreground, border-border, etc. */
 @theme inline {
   --color-primary: rgb(var(--primary));
   --color-primary-foreground: rgb(var(--primary-foreground));

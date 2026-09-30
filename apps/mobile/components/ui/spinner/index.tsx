@@ -6,7 +6,7 @@ import { styled } from 'nativewind';
 
 
 const StyledActivityIndicator = styled(ActivityIndicator, {
-  className: { target: 'style' },
+  className: { target: 'style', nativeStyleToProp: { color: true } },
 });
 const spinnerStyle = tva({});
 
