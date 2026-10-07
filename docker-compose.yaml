@@ -1,0 +1,17 @@
+services:
+  mindlog-api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: mindlog-api
+    ports:
+      - "8080:8080"
+    env_file:
+      - apps/api/.env
+    #environment:
+    #  NODE_ENV: ${NODE_ENV}
+    #  JWT_SECRET: ${JWT_SECRET}
+    #  PORT: ${PORT}
+    #  TURSO_DATABASE_URL: ${TURSO_DATABASE_URL}
+    #  TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN}
+    restart: unless-stopped

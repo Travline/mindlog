@@ -7,6 +7,10 @@ const CreateUserSchema = z.object({
 });
 
 // Tipo de dato que responde el parse() del schema
+
+/**
+ * Es el tipo proveniente de CreateUserSchema
+ */
 type CreateUserReq = z.infer<typeof CreateUserSchema>;
 
 type CreateUserRes = {

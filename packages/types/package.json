@@ -5,20 +5,23 @@
   "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "default": "./build/index.js"
     }
   },
   "private": true,
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && tsc-alias && tsc-esm-fix",
+    "tsc": "tsc"
   },
   "dependencies": {
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "tsc-alias": "1.9.4",
+    "tsc-esm-fix": "3.1.2",
+    "tsx": "4.19.2"
   },
   "keywords": [],
   "author": "",

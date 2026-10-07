@@ -8,7 +8,9 @@
     "strict": true,
     "skipLibCheck": true,
     "isolatedModules": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "rootDir": "./src",
+    "outDir": "./build"
   },
   "include": [
     "src/**/*"

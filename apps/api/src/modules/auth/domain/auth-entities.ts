@@ -1,5 +1,5 @@
-export type UserSchema = {
-  user_id: string
+export type UserEntity = {
+  userId?: string
   email: string
   username: string
   password: string
