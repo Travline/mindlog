@@ -33,11 +33,39 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CreateUserSchema = void 0;
+exports.LoginUserResSchema = exports.LoginUserSchema = exports.CreateUserResSchema = exports.CreateUserSchema = void 0;
 const z = __importStar(require("zod"));
 const CreateUserSchema = z.object({
-    username: z.string().min(2).max(100),
-    email: z.email(),
-    password: z.string().min(8).max(100),
+    username: z
+        .string()
+        .min(2, "Ingresa un nombre valido con al menos 2 caracteres")
+        .max(100),
+    email: z
+        .email("Ingresa un correo valido"),
+    password: z
+        .string()
+        .min(8, "La contraseña debe contener al menos 8 caracteres")
+        .max(100),
 });
 exports.CreateUserSchema = CreateUserSchema;
+const CreateUserResSchema = z.object({
+    userId: z.string(),
+    username: z.string(),
+    email: z.string(),
+});
+exports.CreateUserResSchema = CreateUserResSchema;
+const LoginUserSchema = z.object({
+    email: z
+        .email("Ingresa un correo valido"),
+    password: z
+        .string()
+        .min(8, "La contraseña debe contener al menos 8 caracteres")
+        .max(100),
+});
+exports.LoginUserSchema = LoginUserSchema;
+const LoginUserResSchema = z.object({
+    userId: z.string(),
+    username: z.string(),
+    email: z.string(),
+});
+exports.LoginUserResSchema = LoginUserResSchema;

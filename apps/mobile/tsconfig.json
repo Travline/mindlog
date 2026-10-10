@@ -17,6 +17,7 @@
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
     "nativewind-env.d.ts",
-    "react-native-css-env.d.ts"
+    "react-native-css-env.d.ts",
+    "../../packages/types/src/api-error.ts"
   ]
 }

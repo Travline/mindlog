@@ -1,24 +1,66 @@
-import * as z from 'zod';
+import * as z from "zod";
 
 const CreateUserSchema = z.object({
-  username: z.string().min(2).max(100),
-  email: z.email(),
-  password: z.string().min(8).max(100),
+  username: z
+    .string()
+    .min(2, "Ingresa un nombre valido con al menos 2 caracteres")
+    .max(100),
+
+  email: z
+    .email("Ingresa un correo valido"),
+
+  password: z
+    .string()
+    .min(8, "La contraseña debe contener al menos 8 caracteres")
+    .max(100),
 });
 
-// Tipo de dato que responde el parse() del schema
-
-/**
- * Es el tipo proveniente de CreateUserSchema
- */
 type CreateUserReq = z.infer<typeof CreateUserSchema>;
 
-type CreateUserRes = {
-  userId: string
-  username: string
-  email: string
-}
+const CreateUserResSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  email: z.string(),
+});
 
-export { CreateUserSchema };
-export type { CreateUserReq };
-export type { CreateUserRes };
+type CreateUserRes = z.infer<typeof CreateUserResSchema>;
+
+export {
+  CreateUserSchema,
+  CreateUserResSchema,
+};
+
+export type {
+  CreateUserReq,
+  CreateUserRes,
+};
+
+const LoginUserSchema = z.object({
+  email: z
+    .email("Ingresa un correo valido"),
+
+  password: z
+    .string()
+    .min(8, "La contraseña debe contener al menos 8 caracteres")
+    .max(100),
+});
+
+type LoginUserReq = z.infer<typeof LoginUserSchema>;
+
+const LoginUserResSchema = z.object({
+  userId: z.string(),
+  username: z.string(),
+  email: z.string(),
+});
+
+type LoginUserRes = z.infer<typeof LoginUserResSchema>;
+
+export {
+  LoginUserSchema,
+  LoginUserResSchema,
+};
+
+export type {
+  LoginUserReq,
+  LoginUserRes,
+};

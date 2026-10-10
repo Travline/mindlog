@@ -3,7 +3,7 @@ import { v7 as uuidv7 } from "uuid";
 import { findByEmail, save } from "@/modules/auth/data-access/auth-repository";
 import { AppError } from "@/shared/error-handling/app-error";
 import HttpCode from "@/shared/enums/http-code";
-import { hash } from "bcrypt";
+import { compare, hash } from "bcrypt";
 
 const SALT_ROUNDS = 10
 
@@ -40,4 +40,28 @@ export async function createUser(userDto: UserEntity): Promise<UserEntity> {
   }
 
   return savedUser;
+}
+
+export async function authenticateUser(credentials: Pick<UserEntity, 'email' | 'password'>): Promise<UserEntity> {
+  const userFound = await findByEmail(credentials.email.trim());
+  if (!userFound) {
+    throw new AppError(
+      'INVALID_CREDENTIALS',
+      HttpCode.UNAUTHORIZED,
+      'Correo o contraseña incorrectos',
+      true
+    );
+  }
+
+  const isPasswordValid = await compare(credentials.password.trim(), userFound.password);
+  if (!isPasswordValid) {
+    throw new AppError(
+      'INVALID_CREDENTIALS',
+      HttpCode.UNAUTHORIZED,
+      'Correo o contraseña incorrectos',
+      true
+    );
+  }
+
+  return userFound;
 }
