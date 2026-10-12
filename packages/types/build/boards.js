@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BoardResSchema = exports.UpdateBoardSchema = exports.CreateBoardSchema = void 0;
+exports.BoardResSchema = exports.GetBoardsQuerySchema = exports.BoardFilterSchema = exports.UpdateBoardSchema = exports.CreateBoardSchema = void 0;
 const z = __importStar(require("zod"));
 const CreateBoardSchema = z.object({
     title: z
@@ -58,11 +58,18 @@ const UpdateBoardSchema = z.object({
         .optional(),
 });
 exports.UpdateBoardSchema = UpdateBoardSchema;
+const BoardFilterSchema = z.enum(["all", "owned", "shared"]).default("all");
+exports.BoardFilterSchema = BoardFilterSchema;
+const GetBoardsQuerySchema = z.object({
+    filter: BoardFilterSchema.optional().default("all"),
+});
+exports.GetBoardsQuerySchema = GetBoardsQuerySchema;
 const BoardResSchema = z.object({
     boardId: z.number(),
     title: z.string(),
     description: z.string().nullable(),
     ownerId: z.string(),
+    isOwner: z.boolean(),
     createdAt: z.string().nullable(),
 });
 exports.BoardResSchema = BoardResSchema;

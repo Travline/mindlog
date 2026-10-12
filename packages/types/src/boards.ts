@@ -29,16 +29,39 @@ const UpdateBoardSchema = z.object({
 
 type UpdateBoardReq = z.infer<typeof UpdateBoardSchema>;
 
+const BoardFilterSchema = z.enum(["all", "owned", "shared"]).default("all");
+
+type BoardFilter = z.infer<typeof BoardFilterSchema>;
+
+const GetBoardsQuerySchema = z.object({
+  filter: BoardFilterSchema.optional().default("all"),
+});
+
+type GetBoardsQuery = z.infer<typeof GetBoardsQuerySchema>;
+
 const BoardResSchema = z.object({
   boardId: z.number(),
   title: z.string(),
   description: z.string().nullable(),
   ownerId: z.string(),
+  isOwner: z.boolean(),
   createdAt: z.string().nullable(),
 });
 
 type BoardRes = z.infer<typeof BoardResSchema>;
 
-export { CreateBoardSchema, UpdateBoardSchema, BoardResSchema };
+export {
+  CreateBoardSchema,
+  UpdateBoardSchema,
+  BoardFilterSchema,
+  GetBoardsQuerySchema,
+  BoardResSchema,
+};
 
-export type { CreateBoardReq, UpdateBoardReq, BoardRes };
+export type {
+  CreateBoardReq,
+  UpdateBoardReq,
+  BoardFilter,
+  GetBoardsQuery,
+  BoardRes,
+};

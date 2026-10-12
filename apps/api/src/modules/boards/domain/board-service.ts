@@ -2,6 +2,7 @@ import { BoardEntity } from "@/modules/boards/domain/board-entities";
 import {
   save,
   findAllByOwnerId,
+  findAllByUser,
   findById,
   update,
   remove,
@@ -33,6 +34,13 @@ export async function createBoard(
 
 export async function getBoardsByOwner(ownerId: string): Promise<BoardEntity[]> {
   return findAllByOwnerId(ownerId);
+}
+
+export async function getBoards(
+  userId: string,
+  filter: "all" | "owned" | "shared" = "all"
+): Promise<BoardEntity[]> {
+  return findAllByUser(userId, filter);
 }
 
 export async function getBoardById(

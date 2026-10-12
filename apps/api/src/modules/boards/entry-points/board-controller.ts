@@ -1,8 +1,14 @@
-import { CreateBoardReq, UpdateBoardReq, BoardRes } from "@mindlog/types";
+import {
+  CreateBoardReq,
+  UpdateBoardReq,
+  BoardRes,
+  BoardFilterSchema,
+  GetBoardsQuery,
+} from "@mindlog/types";
 import { NextFunction, Request, Response } from "express";
 import {
   createBoard,
-  getBoardsByOwner,
+  getBoards,
   getBoardById,
   updateBoard,
   deleteBoard,
@@ -42,6 +48,7 @@ export async function handleCreate(
       title: board.title,
       description: board.description ?? null,
       ownerId: board.ownerId,
+      isOwner: true,
       createdAt: board.createdAt ?? null,
     });
   } catch (error) {
@@ -50,14 +57,16 @@ export async function handleCreate(
 }
 
 export async function handleGetAll(
-  req: Request,
+  req: Request<{}, BoardRes[], {}, GetBoardsQuery>,
   res: Response<BoardRes[]>,
   next: NextFunction
 ) {
   try {
     const userId = req.userId as string;
+    const parseResult = BoardFilterSchema.safeParse(req.query.filter);
+    const filter = parseResult.success ? parseResult.data : "all";
 
-    const boards = await getBoardsByOwner(userId);
+    const boards = await getBoards(userId, filter);
 
     res.status(HttpCode.OK).json(
       boards.map((board) => ({
@@ -65,6 +74,7 @@ export async function handleGetAll(
         title: board.title,
         description: board.description ?? null,
         ownerId: board.ownerId,
+        isOwner: board.isOwner ?? (board.ownerId === userId),
         createdAt: board.createdAt ?? null,
       }))
     );
@@ -90,6 +100,7 @@ export async function handleGetOne(
       title: board.title,
       description: board.description ?? null,
       ownerId: board.ownerId,
+      isOwner: board.ownerId === userId,
       createdAt: board.createdAt ?? null,
     });
   } catch (error) {
@@ -116,6 +127,7 @@ export async function handleUpdate(
       title: board.title,
       description: board.description ?? null,
       ownerId: board.ownerId,
+      isOwner: board.ownerId === userId,
       createdAt: board.createdAt ?? null,
     });
   } catch (error) {
@@ -140,3 +152,4 @@ export async function handleDelete(
     next(error);
   }
 }
+

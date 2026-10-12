@@ -42,9 +42,58 @@ export async function findAllByOwnerId(ownerId: string): Promise<BoardEntity[]> 
     title: String(row.title),
     description: row.description ? String(row.description) : null,
     ownerId: String(row.owner_id),
+    isOwner: true,
     createdAt: row.created_at ? String(row.created_at) : null,
   }));
 }
+
+export async function findAllByUser(
+  userId: string,
+  filter: "all" | "owned" | "shared" = "all"
+): Promise<BoardEntity[]> {
+  let sql = "";
+
+  if (filter === "owned") {
+    sql = `
+      SELECT board_id, title, description, owner_id, created_at
+      FROM boards
+      WHERE owner_id = :userId
+      ORDER BY created_at DESC;
+    `;
+  } else if (filter === "shared") {
+    sql = `
+      SELECT b.board_id, b.title, b.description, b.owner_id, b.created_at
+      FROM boards b
+      INNER JOIN board_members bm ON b.board_id = bm.board_id
+      WHERE bm.user_id = :userId AND b.owner_id != :userId
+      ORDER BY b.created_at DESC;
+    `;
+  } else {
+    // "all"
+    sql = `
+      SELECT DISTINCT b.board_id, b.title, b.description, b.owner_id, b.created_at
+      FROM boards b
+      LEFT JOIN board_members bm ON b.board_id = bm.board_id
+      WHERE b.owner_id = :userId OR bm.user_id = :userId
+      ORDER BY b.created_at DESC;
+    `;
+  }
+
+  const result = await db.execute({
+    sql,
+    args: { userId },
+  });
+
+  return result.rows.map((row) => ({
+    boardId: Number(row.board_id),
+    title: String(row.title),
+    description: row.description ? String(row.description) : null,
+    ownerId: String(row.owner_id),
+    isOwner: String(row.owner_id) === userId,
+    createdAt: row.created_at ? String(row.created_at) : null,
+  }));
+}
+
 
 export async function findById(boardId: number, ownerId: string): Promise<BoardEntity | null> {
   const result = await db.execute({

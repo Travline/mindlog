@@ -18,19 +18,43 @@ import { useAuth } from "@/context/AuthContext";
 import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
 import { ArrowBigUpDash, PackageOpen, Plus } from "lucide-react-native";
 import { Box } from "@/components/ui/box";
-import { useState } from "react";
-import { BoardRes } from "@mindlog/types";
+import { useEffect, useState } from "react";
+import { BoardFilter, BoardRes } from "@mindlog/types";
+import { API_URL } from "@/constants/Environment";
+import axios from "axios";
+import { Card } from "@/components/ui/card";
 
-function notFoundText(value: string): string {
-  if (value === 'all') return 'Aún no tienes ni perteneces a un tablero';
-  if (value === 'owned') return 'Aún no tienes ningún tablero propio';
-  if (value === 'shared') return 'Aún no no te añaden a un tablero';
-  return '';
-}
 
 export default function Home() {
+  function notFoundText(value: string): string {
+    if (value === 'all') return 'Aún no tienes ni perteneces a un tablero';
+    if (value === 'owned') return 'Aún no tienes ningún tablero propio';
+    if (value === 'shared') return 'Aún no no te añaden a un tablero';
+    return '';
+  }
+
   const [showBoards, setShowBoards] = useState<string>('all');
   const [boards, setBoards] = useState<BoardRes[]>([]);
+  const auth = useAuth();
+
+  useEffect(() => {
+    const getBoards = async () => {
+      try {
+        const response = await axios
+          .get<BoardRes[]>(
+            `${API_URL}/boards`,
+            {
+              params: { filter: showBoards },
+              headers: { 'Authorization': `Bearer ${auth.token}` }
+            }
+          )
+        setBoards(response.data)
+      } catch (error) {
+        console.log(error)
+      }
+    }
+    getBoards()
+  }, [showBoards]);
 
   return (
     <Box className="p-5 gap-10 bg-background h-full w-full">
@@ -61,10 +85,22 @@ export default function Home() {
         </Select>
       </Box>
 
-      <Center className="p-5 pb-40 h-full gap-5">
-        <Icon className="w-15 h-15" as={PackageOpen} />
-        <Text className="text-lg text-center">{notFoundText(showBoards)}</Text>
-      </Center>
+      {
+        boards.length === 0
+          ?
+          <Center className="p-5 pb-40 h-full gap-5">
+            <Icon className="w-15 h-15" as={PackageOpen} />
+            <Text className="text-lg text-center">{notFoundText(showBoards)}</Text>
+          </Center>
+          :
+          boards.map((board, index) => (
+            <Card className="" key={index}>
+              <Text className="text-muted-foreground">{board.isOwner ? 'Propio' : 'Miembro'}</Text>
+              <Text className="text-lg font-bold">{board.title}</Text>
+              <Text className="text-lg text-muted-foreground">{board.description}</Text>
+            </Card>
+          ))
+      }
     </Box>
   );
 }
