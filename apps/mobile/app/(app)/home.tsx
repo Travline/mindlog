@@ -19,6 +19,7 @@ import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
 import { ArrowBigUpDash, PackageOpen, Plus } from "lucide-react-native";
 import { Box } from "@/components/ui/box";
 import { useState } from "react";
+import { BoardRes } from "@mindlog/types";
 
 function notFoundText(value: string): string {
   if (value === 'all') return 'Aún no tienes ni perteneces a un tablero';
@@ -29,6 +30,7 @@ function notFoundText(value: string): string {
 
 export default function Home() {
   const [showBoards, setShowBoards] = useState<string>('all');
+  const [boards, setBoards] = useState<BoardRes[]>([]);
 
   return (
     <Box className="p-5 gap-10 bg-background h-full w-full">
