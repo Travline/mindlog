@@ -9,6 +9,7 @@ import { useState } from "react";
 import axios from "axios";
 
 import { API_URL } from "@/constants/Environment";
+import { useAuth } from "@/context/AuthContext";
 
 import { Box } from "@/components/ui/box";
 import { Button, ButtonIcon, ButtonText } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const INITIAL_FORM: CreateUserReq = {
 };
 
 export default function Register() {
+  const { signIn } = useAuth();
   const [userForm, setUserForm] =
     useState<CreateUserReq>(INITIAL_FORM);
 
@@ -110,7 +112,13 @@ export default function Register() {
         result.data,
       );
 
-      console.log(response.data);
+      const tokenHeader =
+        response.headers["x-access-token"] ||
+        response.headers["X-Access-Token"];
+
+      if (tokenHeader && typeof tokenHeader === "string") {
+        await signIn(tokenHeader);
+      }
     } catch (error: unknown) {
       if (axios.isAxiosError<ApiError>(error)) {
         const apiError = error.response?.data;
