@@ -8,8 +8,8 @@ services:
       - "8080:8080"
     env_file:
       - apps/api/.env
-    #environment:
-    #  NODE_ENV: ${NODE_ENV}
+    environment:
+      NODE_ENV: production
     #  JWT_SECRET: ${JWT_SECRET}
     #  PORT: ${PORT}
     #  TURSO_DATABASE_URL: ${TURSO_DATABASE_URL}
