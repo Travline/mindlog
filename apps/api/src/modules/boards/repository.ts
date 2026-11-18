@@ -21,6 +21,8 @@ export async function deleteBoardData(boardId: number) {
     await tx.execute({sql: 'DELETE FROM card_assignments WHERE card_id IN (SELECT k.card_id FROM cards k JOIN board_columns c ON c.column_id=k.column_id WHERE c.board_id=?)', args:[boardId]});
     await tx.execute({sql: 'DELETE FROM cards WHERE column_id IN (SELECT column_id FROM board_columns WHERE board_id=?)', args:[boardId]});
     await tx.execute({sql: 'DELETE FROM board_columns WHERE board_id=?', args:[boardId]});
+    await tx.execute({sql: 'DELETE FROM join_requests WHERE board_id=?', args:[boardId]});
+    await tx.execute({sql: 'DELETE FROM board_invites WHERE board_id=?', args:[boardId]});
     await tx.execute({sql: 'DELETE FROM board_members WHERE board_id=?', args:[boardId]});
     await tx.execute({sql: 'DELETE FROM boards WHERE board_id=?', args:[boardId]});
     await tx.commit();
@@ -63,7 +65,8 @@ export const boardRepository = {
     const tx=await database().transaction('write');
     try {
       await tx.execute({sql:'INSERT INTO board_members (board_id,user_id) VALUES (?,?)',args:[boardId,userId]});
-      const result=await tx.execute({sql:`INSERT INTO notifications(user_id,board_id,kind,message) SELECT ?,board_id,'board_member','Te agregaron al tablero ' || title FROM boards WHERE board_id=? RETURNING notification_id`,args:[userId,boardId]});
+      const pending=await tx.execute({sql:"UPDATE join_requests SET status='accepted',resolved_at=CURRENT_TIMESTAMP WHERE board_id=? AND user_id=? AND status='pending'",args:[boardId,userId]});
+      const result=await tx.execute({sql:`INSERT INTO notifications(user_id,board_id,kind,message) SELECT ?,board_id,?,? || title FROM boards WHERE board_id=? RETURNING notification_id`,args:[userId,pending.rowsAffected?'join_accepted':'board_member',pending.rowsAffected?'Aceptaron tu solicitud para ':'Te agregaron al tablero ',boardId]});
       await tx.commit(); return [Number(result.rows[0].notification_id)];
     } catch(e) { await tx.rollback(); throw e; } finally { tx.close(); }
   },

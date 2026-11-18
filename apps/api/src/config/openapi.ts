@@ -33,8 +33,13 @@ export const openapi = swaggerJSDoc({
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
+        InviteCode: object({code:{type:'string',pattern:'^[a-f0-9]{64}$'}}, ['code']),
+        InvitePreview: object({board_id:integer,title,status:{type:'string',enum:['member','pending','available']}}, ['board_id','title','status']),
+        JoinRequest: object({request_id:integer,user_id:uuid,username:string,email,created_at:string}, ['request_id','user_id','username','email','created_at']),
+        JoinRequestArray: array(ref('JoinRequest')),
+        JoinDecision: object({decision:{type:'string',enum:['accept','reject']}}, ['decision']),
         PushDeviceInput: object({token:string}, ['token']),
-        Notification: object({notification_id:integer,board_id:integer,kind:{type:'string',enum:['board_member','card_assigned']},message:string,created_at:string,read_at:nullableString}, ['notification_id','board_id','kind','message','created_at','read_at']),
+        Notification: object({notification_id:integer,board_id:integer,kind:{type:'string',enum:['board_member','card_assigned','join_requested','join_accepted','join_rejected']},message:string,created_at:string,read_at:nullableString}, ['notification_id','board_id','kind','message','created_at','read_at']),
         Error: object({error: string}, ['error']),
         Health: object({status: {type:'string', enum:['ok']}}, ['status']),
         User: object({user_id:uuid, username:{type:'string',maxLength:100}, email}, ['user_id','username','email']),
