@@ -251,6 +251,7 @@ boards.delete('/:boardId',async(req,res)=>{await service.remove(id(req.params.bo
  *     tags:
  *     - Miembros
  *     summary: Agregar miembro por correo (dueño)
+ *     description: Guarda una notificación para el integrante e intenta enviar un aviso push.
  *     operationId: post_boards__boardId__members
  *     security:
  *     - bearerAuth: []
@@ -723,6 +724,7 @@ boards.delete('/:boardId/cards/:cardId',async(req,res)=>{await service.removeCar
  *     tags:
  *     - Tickets
  *     summary: Reemplazar responsables de ticket
+ *     description: Notifica a los nuevos responsables, excepto a quien realizó la asignación.
  *     operationId: put_boards__boardId__cards__cardId__assignments
  *     security:
  *     - bearerAuth: []

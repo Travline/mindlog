@@ -24,3 +24,5 @@ export type Board = { board_id: number; title: string; description: string | nul
 export type Column = { column_id: number; title: string };
 export type Card = { card_id: number; column_id: number; title: string; description: string | null; priority: string; due_date: string | null };
 export type BoardDetail = Board & { members: Member[]; columns: Column[]; cards: Card[]; assignments: { card_id: number; user_id: string }[] };
+
+export type Notification = { notification_id: number; board_id: number; kind: 'board_member' | 'card_assigned'; message: string; created_at: string; read_at: string | null };

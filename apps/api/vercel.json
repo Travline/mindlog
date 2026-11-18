@@ -1,7 +1,8 @@
 {
   "functions": {
     "src/app.ts": {
-      "includeFiles": "src/**/*.ts"
+      "includeFiles": "src/**/*.ts",
+      "excludeFiles": "**/mobile/**"
     }
   }
 }

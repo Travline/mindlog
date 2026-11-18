@@ -4,7 +4,7 @@ Aplicación del curso Desarrollo Móvil para gestionar tareas en tableros compar
 
 ## Requisitos
 
-Node.js 22.13 o posterior, pnpm y Expo Go compatible con SDK 58 en Android. Las notificaciones se planificarán por separado.
+Node.js 22.13 o posterior, pnpm, una cuenta Expo/EAS y un teléfono Android. El entorno principal usa una Development Build; Expo Go permanece disponible para funcionalidades compatibles.
 
 ## API
 
@@ -16,6 +16,6 @@ Si el puerto ya está ocupado, detén el servicio que lo usa o cambia `PORT` en 
 
 ## Mobile
 
-En `apps/mobile`, configura `.env` a partir de `.env.example` e instala con `pnpm install`. Usa `pnpm start` para la API de desarrollo o `pnpm start -- --api=prod` para la URL de producción. Abre el QR con Expo Go en Android. Cada comando limpia la caché de Metro para aplicar la selección.
+En `apps/mobile`, configura `.env` a partir de `.env.example` e instala con `pnpm install`. Instala una Development Build y usa `pnpm start` para la API de desarrollo o `pnpm start -- --api=prod` para otra API configurada. Abre la Development Build y conecta con Metro; Fast Refresh aplica los cambios JavaScript/TypeScript. `pnpm start -- --go` permite usar Expo Go para funciones compatibles. Consulta [desarrollo, APK y notificaciones](docs/deploy-vercel.md#8-desarrollo-y-pruebas-android-con-eas).
 
 `EXPO_PUBLIC_DEV_API_URL` debe apuntar a la IP de la computadora visible para el teléfono (no `localhost`); `EXPO_PUBLIC_PROD_API_URL` debe apuntar a la API desplegada. Las variables `EXPO_PUBLIC_*` son públicas y no deben contener secretos. Véanse [arquitectura](docs/architecture.md) y [decisiones visuales de la app](docs/mobile-design.md).

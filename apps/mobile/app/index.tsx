@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, BackHandler, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, BackHandler, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Svg, Path } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
 import { createButton } from '@gluestack-ui/core/button/creator';
 import { UIIcon } from '@gluestack-ui/core/icon/creator';
-import { api, ApiError, type Board, type BoardDetail, type Card, type Column, type Member, type User } from '../lib/api';
+import { api, ApiError, type Board, type BoardDetail, type Card, type Column, type Member, type Notification, type User } from '../lib/api';
 import Logo from '../assets/icons/Logo';
+import { supportsPush, syncPush, unregisterPush, type PermissionState } from '../lib/notifications';
 
 type Field = { key: string; label: string; value?: string; secret?: boolean; multiline?: boolean; keyboard?: 'email-address'; options?: readonly string[]; kind?: 'date' };
 type Form = { title: string; fields: Field[]; submit: (values: Record<string, string>) => Promise<void> };
@@ -121,7 +122,7 @@ function AssignedMembersModal({ members, close }: { members: Member[] | null; cl
 
 export default function Home() {
   const [token, setToken] = useState(''); const [user, setUser] = useState<User | null>(null); const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState(''); const [screen, setScreen] = useState<'boards'|'board'|'profile'|'settings'|'members'>('boards');
+  const [message, setMessage] = useState(''); const [screen, setScreen] = useState<'boards'|'board'|'profile'|'settings'|'members'|'notifications'>('boards');
   const [boards, setBoards] = useState<Board[]>([]); const [board, setBoard] = useState<BoardDetail | null>(null);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
   const [columnSelectorOpen, setColumnSelectorOpen] = useState(false);
@@ -133,9 +134,14 @@ export default function Home() {
   const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [username, setUsername] = useState('');
   const [authBusy, setAuthBusy] = useState(false); const [restoringToken, setRestoringToken] = useState('');
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [pushPermission, setPushPermission] = useState<PermissionState>('unavailable');
+  const [pendingNotification, setPendingNotification] = useState<{notificationId:number;boardId:number} | null>(null);
+  const pushWork = useRef<Promise<unknown>>(Promise.resolve());
+  const activeSession = useRef('');
   const pendingRef = useRef(false);
   const authBusyRef = useRef(false);
-  const signOut = useCallback(async () => { await SecureStore.deleteItemAsync(TOKEN_KEY); setToken(''); setUser(null); setBoard(null); setBoards([]); setForm(null); setMovingCard(null); setOpenCardActionsId(null); setOpenColumnActionsId(null); setAssigningCard(null); setViewingCardId(null); setScreen('boards'); setRestoringToken(''); setMessage(''); }, []);
+  const signOut = useCallback(async () => { const previous=activeSession.current; activeSession.current=''; await pushWork.current.catch(()=>{}); if(previous) await unregisterPush(previous).catch(()=>{}); await SecureStore.deleteItemAsync(TOKEN_KEY); setToken(''); setUser(null); setBoard(null); setBoards([]); setForm(null); setMovingCard(null); setOpenCardActionsId(null); setOpenColumnActionsId(null); setAssigningCard(null); setViewingCardId(null); setScreen('boards'); setRestoringToken(''); setMessage(''); setNotifications([]); setPushPermission('unavailable'); }, []);
   const restore = useCallback(async (saved: string) => {
     setLoading(true); setMessage('');
     try { const current = await api<User>('/auth/me', saved); setToken(saved); setUser(current); setRestoringToken(''); }
@@ -153,6 +159,59 @@ export default function Home() {
     setSelectedColumnId(current => !resetSelection && data.columns.some(column => column.column_id === current) ? current : data.columns[0]?.column_id ?? null);
     setBoard(data);
   }, [request]);
+  const loadNotifications = useCallback(async () => { setNotifications(await request<Notification[]>('/notifications')); }, [request]);
+  useEffect(() => {
+    if (!token) return;
+    activeSession.current=token;
+    const sync = (ask: boolean, devicePushToken?: import('expo-notifications').DevicePushToken) => {
+      pushWork.current=pushWork.current.catch(()=>{}).then(async()=>{
+        if(activeSession.current!==token) return;
+        try { const state=await syncPush(token,ask,devicePushToken); if(activeSession.current===token) setPushPermission(state); }
+        catch { if(activeSession.current===token) setPushPermission('error'); }
+      });
+    };
+    let disposed=false;
+    let tokenSubscription: {remove:()=>void} | undefined;
+    if(supportsPush) void import('expo-notifications').then(Notifications=>{
+      if(!disposed) tokenSubscription=Notifications.addPushTokenListener(devicePushToken=>sync(false,devicePushToken));
+    }).catch(()=>{});
+    sync(true);
+    const subscription=AppState.addEventListener('change',state=>{ if(state==='active') { sync(false); void loadNotifications().catch(()=>{}); } });
+    void loadNotifications().catch(()=>{});
+    return () => { disposed=true; tokenSubscription?.remove(); subscription.remove(); if(activeSession.current===token) activeSession.current=''; };
+  }, [token,loadNotifications]);
+  useEffect(() => {
+    if (!supportsPush) return;
+    let disposed=false;
+    let responseSubscription: {remove:()=>void} | undefined;
+    let receivedSubscription: {remove:()=>void} | undefined;
+    void import('expo-notifications').then(async Notifications=>{
+      if(disposed) return;
+      Notifications.setNotificationHandler({handleNotification:async()=>({shouldShowBanner:true,shouldShowList:true,shouldPlaySound:true,shouldSetBadge:false})});
+      const handle=(response: import('expo-notifications').NotificationResponse) => {
+        const data=response.notification.request.content.data;
+        const notificationId=Number(data?.notificationId), boardId=Number(data?.boardId);
+        if(Number.isSafeInteger(notificationId) && notificationId>0 && Number.isSafeInteger(boardId) && boardId>0) setPendingNotification({notificationId,boardId});
+        void Notifications.clearLastNotificationResponseAsync();
+      };
+      responseSubscription=Notifications.addNotificationResponseReceivedListener(handle);
+      receivedSubscription=Notifications.addNotificationReceivedListener(()=>{if(activeSession.current) void loadNotifications().catch(()=>{});});
+      const last=await Notifications.getLastNotificationResponseAsync(); if(last && !disposed) handle(last);
+    }).catch(()=>{});
+    return ()=>{disposed=true;responseSubscription?.remove();receivedSubscription?.remove();};
+  }, [loadNotifications]);
+  const openNotification=useCallback(async (notificationId:number,boardId:number)=>{
+    try {
+      await request(`/notifications/${notificationId}/read`,'PUT');
+      await loadNotifications();
+      await loadBoard(boardId,true);
+      setScreen('board');
+    } catch(e) {
+      if(e instanceof ApiError && (e.status===403 || e.status===404)) { setBoard(null);setScreen('boards');Alert.alert('Mindlog','Esta notificación o el tablero ya no están disponibles.'); }
+      else Alert.alert('Mindlog',e instanceof Error ? e.message : 'No se pudo abrir la notificación');
+    }
+  },[request,loadNotifications,loadBoard]);
+  useEffect(()=>{if(user && token && pendingNotification){const item=pendingNotification;setPendingNotification(null);void openNotification(item.notificationId,item.boardId);}},[user,token,pendingNotification,openNotification]);
   const run = useCallback((fn: () => Promise<unknown>, message = 'Actualizando…') => {
     if (pendingRef.current) return;
     pendingRef.current = true;
@@ -202,7 +261,7 @@ export default function Home() {
   if (restoringToken) return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff', justifyContent: 'center', gap: 16, padding: 24 }}><Text className="text-black">{message}</Text><Button title="Reintentar" onPress={()=>{void restore(restoringToken);}}/><Button title="Cerrar sesión" outline onPress={()=>{void signOut();}}/></SafeAreaView>;
   if (!user) return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:24,gap:16,flexGrow:1,justifyContent:'center'}}><View className="h-16 w-16 self-center"><Logo /></View><Text className="text-center text-3xl font-bold text-black">Mindlog</Text><Text className="text-center text-black">{register?'Crea tu cuenta':'Organiza tus ideas y tareas'}</Text>{register&&<FieldInput label="Nombre" value={username} onChange={setUsername} editable={!authBusy}/>}<FieldInput label="Correo" value={email} onChange={setEmail} keyboard="email-address" editable={!authBusy}/><FieldInput label="Contraseña" value={password} onChange={setPassword} secret editable={!authBusy}/>{!!message&&<Text accessibilityRole="alert" className="text-black">{message}</Text>}<Button title={authBusy?'Espera…':register?'Crear cuenta':'Iniciar sesión'} loading={authBusy} onPress={()=>{void login();}}/><Button title={register?'Ya tengo una cuenta':'Crear una cuenta'} outline disabled={authBusy} onPress={()=>{setRegister(!register);setMessage('');}}/></ScrollView></SafeAreaView>;
   return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}><ScrollView importantForAccessibility={pendingMessage || openCardActionsId !== null || openColumnActionsId !== null ? 'no-hide-descendants' : 'auto'} contentContainerStyle={{padding:20,gap:16}}>
-   <View className="flex-row items-center justify-between">{screen!=='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={8} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 8 }} onPress={goBack}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M15 5 8 12l7 7" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable>}<Text className="flex-1 text-2xl font-bold text-black">{screen==='board' ? board?.title : screen==='settings'?'Configuración del tablero':screen==='members'?'Integrantes':screen==='profile'?'Mi perfil':'Mis tableros'}</Text>{screen==='board'&&board&&<Pressable accessibilityRole="button" accessibilityLabel="Más opciones del tablero" hitSlop={8} className="ml-3 px-2" onPress={()=>{setColumnSelectorOpen(false);setOpenCardActionsId(null);setScreen(board.is_owner?'settings':'members');}}><Text className="text-3xl font-bold text-black">⋯</Text></Pressable>}{screen==='boards'&&<Pressable accessibilityRole="button" onPress={()=>setScreen('profile')}><Text className="font-semibold text-black underline">Perfil</Text></Pressable>}</View>
+   <View className="flex-row items-center justify-between">{screen!=='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={8} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 8 }} onPress={goBack}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M15 5 8 12l7 7" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable>}<Text className="flex-1 text-2xl font-bold text-black">{screen==='board' ? board?.title : screen==='settings'?'Configuración del tablero':screen==='members'?'Integrantes':screen==='notifications'?'Notificaciones':screen==='profile'?'Mi perfil':'Mis tableros'}</Text>{screen==='board'&&board&&<Pressable accessibilityRole="button" accessibilityLabel="Más opciones del tablero" hitSlop={8} className="ml-3 px-2" onPress={()=>{setColumnSelectorOpen(false);setOpenCardActionsId(null);setScreen(board.is_owner?'settings':'members');}}><Text className="text-3xl font-bold text-black">⋯</Text></Pressable>}{screen==='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Notificaciones" className="mr-4" onPress={()=>{setScreen('notifications');run(loadNotifications,'Cargando notificaciones…');}}><Text className="font-semibold text-black underline">Notificaciones{notifications.some(item=>!item.read_at)?' •':''}</Text></Pressable>}{screen==='boards'&&<Pressable accessibilityRole="button" onPress={()=>setScreen('profile')}><Text className="font-semibold text-black underline">Perfil</Text></Pressable>}</View>
    {screen==='profile' && <><Text className="text-base text-black">{user.username}{'\n'}{user.email}</Text><Button title="Editar perfil" outline onPress={()=>setForm({title:'Editar perfil',fields:[{key:'username',label:'Nombre',value:user.username},{key:'email',label:'Correo',value:user.email,keyboard:'email-address'}],submit:async values=>{const updated=await request<User>('/auth/me','PUT',values);setUser(updated);}})}/><Button title="Cerrar sesión" onPress={()=>run(signOut)}/></>}
    {screen==='boards' && <><Button title="Crear tablero" onPress={()=>openBoardForm()}/>{boards.length===0&&!pendingMessage&&<Text className="text-black">Aún no tienes tableros.</Text>}{boards.map(item=><Pressable key={item.board_id} className="gap-2 rounded-xl border border-neutral-300 p-4" onPress={()=>run(async()=>{await loadBoard(item.board_id,true);setColumnSelectorOpen(false);setScreen('board');},'Abriendo tablero…')}><Text className="text-lg font-bold text-black">{item.title}</Text><Text className="text-black">{item.description || 'Sin descripción'}</Text><Text className="text-neutral-600">{item.is_owner?'Propio':'Compartido'}</Text></Pressable>)}</>}
    {screen==='settings' && board && !!board.is_owner && <>
@@ -213,6 +272,14 @@ export default function Home() {
     <Text className="text-xl font-bold text-black">Integrantes</Text>
     {board.members.map(member=><View key={member.user_id} className="flex-row items-center justify-between gap-2"><Text className="flex-1 text-black">{member.username} · {member.email}{member.is_owner?' (dueño)':''}</Text>{!member.is_owner&&<Pressable onPress={()=>confirm('Retirar integrante',`Retirar a ${member.username} también elimina sus asignaciones.`,()=>run(async()=>{await request(`/boards/${board.board_id}/members/${member.user_id}`,'DELETE');await loadBoard(board.board_id);} ))}><Text className="text-black underline">Retirar</Text></Pressable>}</View>)}
     <Button title="Agregar integrante" outline onPress={()=>setForm({title:'Agregar integrante',fields:[{key:'email',label:'Correo de usuario registrado',keyboard:'email-address'}],submit:async values=>{await request(`/boards/${board.board_id}/members`,'POST',values);await loadBoard(board.board_id);}})}/>
+   </>}
+   {screen==='notifications' && <>
+    {pushPermission==='active' && <Text className="text-black">Los avisos están activados en este dispositivo.</Text>}
+    {pushPermission==='disabled' && <View className="gap-2 rounded-lg border border-neutral-300 p-4"><Text className="text-black">Las notificaciones están desactivadas en este dispositivo. Actívalas en los ajustes para recibir avisos.</Text><Button title="Abrir ajustes" outline onPress={()=>{void Linking.openSettings();}}/></View>}
+    {pushPermission==='error' && <Text className="text-black">No se pudieron activar los avisos. Comprueba tu conexión y la configuración de la aplicación.</Text>}
+    {pushPermission==='unavailable' && <Text className="text-black">Los avisos push requieren una compilación Android instalada en un dispositivo compatible.</Text>}
+    {notifications.length===0 && <Text className="text-black">Aún no tienes notificaciones.</Text>}
+    {notifications.map(item=><Pressable key={item.notification_id} accessibilityRole="button" accessibilityLabel={`${item.read_at?'Leída':'No leída'}: ${item.message}`} className={`gap-1 rounded-lg border border-neutral-200 p-4 ${item.read_at?'bg-white':'bg-neutral-100'}`} onPress={()=>{run(()=>openNotification(item.notification_id,item.board_id),'Abriendo tablero…');}}><Text className={`text-black ${item.read_at?'':'font-bold'}`}>{item.message}</Text><Text className="text-neutral-600">{item.created_at} {item.read_at?'':'· No leída'}</Text></Pressable>)}
    </>}
    {screen==='members' && board && !board.is_owner && <>
     <Text className="text-black">{board.description || 'Sin descripción'}</Text>

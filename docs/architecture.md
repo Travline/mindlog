@@ -22,4 +22,12 @@ La app muestra indicadores durante la recuperación de sesión, el acceso a tabl
 
 Metro utiliza `react-native-compat.js` para conservar los componentes de NativeWind y exponer las APIs de React Native 0.88 que aún no exporta `react-native-css`, como `NativeComponentRegistry`, requerido por Expo Router. Tras cambiar la configuración de Metro, reinicia Expo para aplicarla.
 
-SDK 58 requiere una versión compatible de Expo Go en Android. Las notificaciones y otros requisitos se planificarán después.
+## Notificaciones
+
+Al agregar un integrante o asignar un ticket a otra persona, la API guarda una notificación en la misma transacción que el cambio. Solo se notifican nuevas asignaciones; no se notifica una autoasignación. El historial pertenece a la cuenta, conserva eventos si el tablero desaparece y se marca individualmente al abrirlo. Al navegar se comprueba de nuevo el acceso al tablero.
+
+La API registra tokens Expo por dispositivo y cuenta e intenta enviar inmediatamente después de confirmar la transacción. Un fallo del envío no revierte el cambio. No hay cola, reintentos ni consulta programada de comprobantes: un intento aceptado por Expo no garantiza la entrega, y algunos tokens caducados solo se detectarían mediante comprobantes. Las notificaciones push usan contenido genérico; el detalle queda en la bandeja autenticada.
+
+En Android, la app solicita el permiso y vuelve a comprobarlo al regresar a primer plano, incluyendo el canal predeterminado. También escucha cambios del token nativo mientras está abierta y actualiza el token Expo asociado a la cuenta. Si está desactivado, ofrece abrir ajustes y la bandeja sigue disponible. Se retira el registro al cerrar sesión o detectar que el permiso está desactivado; si no hay conexión, el retiro no puede garantizarse hasta una conexión posterior. Una nueva cuenta que registre el mismo token sustituye a la anterior. La Development Build es el entorno principal y Expo Go sigue siendo compatible con las funciones que admite; las push remotas requieren una compilación instalada y configuración de Expo y Firebase; véase [despliegue](deploy-vercel.md).
+
+El entorno móvil principal usa `expo-dev-client` y Metro con Fast Refresh. Los perfiles EAS `development` y `preview` producen APK de instalación interna; preview incluye el JavaScript y la URL de backend de su entorno y no depende de Metro. No hay EAS Update configurado.

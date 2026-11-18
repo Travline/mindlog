@@ -23,3 +23,7 @@ El dueño es el único que edita o elimina el tablero y administra a otros miemb
 ## Vercel y Turso
 
 Consulta el [manual de despliegue en Vercel](deploy-vercel.md) para preparar Turso, configurar los entornos, aplicar migraciones y verificar la API y la aplicación móvil.
+
+## Notificaciones
+
+La API autenticada ofrece `PUT /notifications/devices` y `DELETE /notifications/devices` con `{ "token": "ExponentPushToken[...]" }`, `GET /notifications` para el historial y `PUT /notifications/{notificationId}/read` para marcar una notificación propia. La especificación completa está en `/docs`. Un token identifica un dispositivo y se reasocia a la última cuenta que lo registra. Los push son intentos inmediatos, sin reintentos ni revisión periódica de comprobantes; el historial se guarda aunque Expo falle.

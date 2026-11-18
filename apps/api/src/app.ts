@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import { openapi } from './config/openapi.js';
 import { auth } from './modules/auth/auth.js';
 import { boards } from './modules/boards/routes.js';
+import { notifications } from './modules/notifications/routes.js';
 import { errorHandler } from './shared/error-handler.js';
 const app = express();
 const require = createRequire(import.meta.url);
@@ -137,5 +138,6 @@ app.get('/docs/swagger-ui.css', (_req, res) => { res.type('css').sendFile(swagge
 app.get('/docs/swagger-ui-bundle.js', (_req, res) => { res.type('js').sendFile(swaggerBundle, { dotfiles: 'allow' }); });
 app.use('/auth', auth);
 app.use('/boards', boards);
+app.use('/notifications', notifications);
 app.use(errorHandler);
 export default app;

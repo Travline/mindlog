@@ -24,3 +24,8 @@ Estas son las decisiones vigentes de Mindlog. Actualiza este documento cuando ca
 - Las acciones del ticket incluyen editar, mover cuando haya otra columna, asignar y eliminar. Eliminar requiere confirmación.
 - La asignación permite buscar integrantes por nombre, seleccionar varios y guardar; los responsables existentes aparecen seleccionados. Los seleccionados tienen fondo gris claro y check a la derecha.
 - **Ver responsables** aparece solo cuando hay personas asignadas, con texto gris y un chevrón previo. Abre una ventana con los nombres y el número de responsables.
+
+## Notificaciones
+
+- El acceso a la bandeja está en «Mis tableros» e indica si hay eventos sin leer. Las notificaciones no leídas usan fondo gris claro y texto destacado; al tocarlas se marcan como leídas y abren el tablero. Si ya no se puede acceder, se explica al usuario.
+- Si el permiso o el canal están desactivados, la bandeja explica cómo activarlos y ofrece abrir los ajustes del dispositivo. Los avisos push requieren una compilación Android instalada; el historial funciona también en Expo Go.

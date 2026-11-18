@@ -1,1 +1,17 @@
-{ "expo": { "name": "Mindlog", "slug": "mindlog", "version": "1.0.0", "orientation": "portrait", "scheme": "mindlog", "userInterfaceStyle": "light", "plugins": ["expo-router"] } }
+{
+  "expo": {
+    "name": "Mindlog",
+    "slug": "mindlog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "mindlog",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "expo-router",
+      "expo-notifications"
+    ],
+    "android": {
+      "package": "com.mindlog.app"
+    }
+  }
+}

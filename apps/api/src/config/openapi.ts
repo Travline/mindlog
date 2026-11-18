@@ -33,6 +33,8 @@ export const openapi = swaggerJSDoc({
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
+        PushDeviceInput: object({token:string}, ['token']),
+        Notification: object({notification_id:integer,board_id:integer,kind:{type:'string',enum:['board_member','card_assigned']},message:string,created_at:string,read_at:nullableString}, ['notification_id','board_id','kind','message','created_at','read_at']),
         Error: object({error: string}, ['error']),
         Health: object({status: {type:'string', enum:['ok']}}, ['status']),
         User: object({user_id:uuid, username:{type:'string',maxLength:100}, email}, ['user_id','username','email']),

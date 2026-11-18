@@ -59,7 +59,14 @@ export const boardRepository = {
     ]); return {members:members.rows,columns:columns.rows,cards:cards.rows,assignments:assignments.rows};
   },
   async findUser(mail: string) { return (await database().execute({sql:'SELECT user_id,username,email FROM users WHERE email=?',args:[mail]})).rows[0]; },
-  async addMember(boardId: number, userId: string) { await database().execute({sql:'INSERT INTO board_members (board_id,user_id) VALUES (?,?)',args:[boardId,userId]}); },
+  async addMember(boardId: number, userId: string) {
+    const tx=await database().transaction('write');
+    try {
+      await tx.execute({sql:'INSERT INTO board_members (board_id,user_id) VALUES (?,?)',args:[boardId,userId]});
+      const result=await tx.execute({sql:`INSERT INTO notifications(user_id,board_id,kind,message) SELECT ?,board_id,'board_member','Te agregaron al tablero ' || title FROM boards WHERE board_id=? RETURNING notification_id`,args:[userId,boardId]});
+      await tx.commit(); return [Number(result.rows[0].notification_id)];
+    } catch(e) { await tx.rollback(); throw e; } finally { tx.close(); }
+  },
   async removeMember(boardId: number, target: string) {
     const tx=await database().transaction('write');
     try { const deleted=await tx.execute({sql:'DELETE FROM board_members WHERE board_id=? AND user_id=?',args:[boardId,target]}); if(!deleted.rowsAffected) return fail(404,'Miembro no encontrado');
@@ -70,13 +77,20 @@ export const boardRepository = {
   async updateColumn(boardId: number, columnId: number, title: string) { return (await database().execute({sql:'UPDATE board_columns SET title=? WHERE board_id=? AND column_id=? RETURNING *',args:[title,boardId,columnId]})).rows[0]; },
   async createCard(boardId: number, columnId: number, data: CardData) { return (await database().execute({sql:'INSERT INTO cards (column_id,title,description,priority,due_date) SELECT column_id,?,?,?,? FROM board_columns WHERE column_id=? AND board_id=? RETURNING *',args:[data.title,data.description,data.priority,data.due,columnId,boardId]})).rows[0]; },
   async updateCard(boardId: number, cardId: number, columnId: number, data: CardData) { return (await database().execute({sql:'UPDATE cards SET title=?,description=?,priority=?,due_date=?,column_id=? WHERE card_id=? AND EXISTS (SELECT 1 FROM board_columns WHERE column_id=? AND board_id=?) RETURNING *',args:[data.title,data.description,data.priority,data.due,columnId,cardId,columnId,boardId]})).rows[0]; },
-  async replaceAssignments(boardId: number, cardId: number, userIds: string[]) {
+  async replaceAssignments(boardId: number, cardId: number, userIds: string[], actorId: string) {
     const tx=await database().transaction('write');
     try {
       for(const userId of userIds){ const r=await tx.execute({sql:'SELECT 1 FROM boards b WHERE b.board_id=? AND (b.owner_id=? OR EXISTS(SELECT 1 FROM board_members m WHERE m.board_id=b.board_id AND m.user_id=?))',args:[boardId,userId,userId]}); if(!r.rows.length) return fail(400,'El responsable no pertenece al tablero'); }
+      const previous=await tx.execute({sql:'SELECT user_id FROM card_assignments WHERE card_id=?',args:[cardId]});
+      const existing=new Set(previous.rows.map(row=>String(row.user_id)));
       await tx.execute({sql:'DELETE FROM card_assignments WHERE card_id=?',args:[cardId]});
       for(const userId of userIds) await tx.execute({sql:'INSERT INTO card_assignments (card_id,user_id) VALUES (?,?)',args:[cardId,userId]});
-      await tx.commit();
+      const notificationIds: number[]=[];
+      for(const userId of userIds.filter(userId=>userId!==actorId && !existing.has(userId))) {
+        const result=await tx.execute({sql:`INSERT INTO notifications(user_id,board_id,kind,message) SELECT ?,?,'card_assigned','Te asignaron el ticket ' || title FROM cards WHERE card_id=? RETURNING notification_id`,args:[userId,boardId,cardId]});
+        notificationIds.push(Number(result.rows[0].notification_id));
+      }
+      await tx.commit(); return notificationIds;
     } catch(e) { await tx.rollback(); throw e; } finally { tx.close(); }
   },
 };
