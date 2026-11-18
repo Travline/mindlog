@@ -1,3 +1,10 @@
 node_modules/
-package-lock.yaml
-package-lock.json
+.env
+.env.*
+!.env.example
+.expo/
+dist/
+build/
+*.tsbuildinfo
+*.log
+.DS_Store

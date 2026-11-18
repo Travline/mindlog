@@ -1,7 +1,8 @@
 import React from 'react';
+import type { SvgProps } from 'react-native-svg';
 import { Svg, G, Path, Defs, ClipPath, Rect } from 'react-native-svg';
 
-const YourSvgComponent = ({ className = '', ...props }) => {
+const YourSvgComponent = ({ className = '', ...props }: SvgProps & { className?: string }) => {
   return (
     <Svg
       width="100%"
