@@ -9,3 +9,6 @@ build/
 *.log
 .DS_Store
 google-services.json
+
+/apps/mobile/android/
+/apps/mobile/ios/

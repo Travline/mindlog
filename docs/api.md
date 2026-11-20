@@ -27,3 +27,7 @@ Consulta el [manual de despliegue en Vercel](deploy-vercel.md) para preparar Tur
 ## Notificaciones
 
 La API autenticada ofrece `PUT /notifications/devices` y `DELETE /notifications/devices` con `{ "token": "ExponentPushToken[...]" }`, `GET /notifications` para el historial y `PUT /notifications/{notificationId}/read` para marcar una notificación propia. La especificación completa está en `/docs`. Un token identifica un dispositivo y se reasocia a la última cuenta que lo registra. Los push son intentos inmediatos, sin reintentos ni revisión periódica de comprobantes; el historial se guarda aunque Expo falle.
+
+## Solicitudes de unión por QR
+
+El dueño obtiene o regenera el código con `GET` o `PUT /invitations/boards/{boardId}/code`. La cuenta solicitante usa `POST /invitations/preview` y `POST /invitations/requests` con `{ "code": "..." }`. El dueño consulta `GET /invitations/boards/{boardId}/requests` y decide con `PUT /invitations/boards/{boardId}/requests/{requestId}` y `{ "decision": "accept" | "reject" }`. Las rutas requieren sesión; la documentación completa y esquemas están en `/docs`. Los códigos son secretos de invitación, no deben registrarse ni incluirse en URLs o logs.

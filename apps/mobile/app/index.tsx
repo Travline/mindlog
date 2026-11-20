@@ -4,17 +4,20 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Svg, Path } from 'react-native-svg';
 import * as SecureStore from 'expo-secure-store';
+import { Accelerometer } from 'expo-sensors';
 import { createButton } from '@gluestack-ui/core/button/creator';
 import { UIIcon } from '@gluestack-ui/core/icon/creator';
-import { api, ApiError, type Board, type BoardDetail, type Card, type Column, type Member, type Notification, type User } from '../lib/api';
+import { api, ApiError, type Board, type BoardDetail, type Card, type Column, type Member, type Notification, type JoinRequest, type User } from '../lib/api';
 import Logo from '../assets/icons/Logo';
+import QRCode from 'react-native-qrcode-svg';
+import JoinScanner from '../components/JoinScanner';
 import { supportsPush, syncPush, unregisterPush, type PermissionState } from '../lib/notifications';
+import { PRIORITIES, SORT_OPTIONS, selectTickets, type Priority, type TicketSort } from '../lib/ticket-list';
 
 type Field = { key: string; label: string; value?: string; secret?: boolean; multiline?: boolean; keyboard?: 'email-address'; options?: readonly string[]; kind?: 'date' };
 type Form = { title: string; fields: Field[]; submit: (values: Record<string, string>) => Promise<void> };
 const GluestackButton = createButton({ Root: Pressable, Text, Group: View, Spinner: ActivityIndicator, Icon: UIIcon });
 const TOKEN_KEY = 'mindlog-session';
-const PRIORITIES = ['Baja', 'Media', 'Alta'] as const;
 const PRIORITY_COLORS: Record<string, { background: string; text: string }> = {
   Baja: { background: '#dcfce7', text: '#166534' },
   Media: { background: '#fef3c7', text: '#92400e' },
@@ -125,7 +128,18 @@ export default function Home() {
   const [message, setMessage] = useState(''); const [screen, setScreen] = useState<'boards'|'board'|'profile'|'settings'|'members'|'notifications'>('boards');
   const [boards, setBoards] = useState<Board[]>([]); const [board, setBoard] = useState<BoardDetail | null>(null);
   const [selectedColumnId, setSelectedColumnId] = useState<number | null>(null);
+  const [priorities, setPriorities] = useState<Priority[]>([...PRIORITIES]);
+  const [ticketSort, setTicketSort] = useState<TicketSort>('Recientes');
+  const [shakeNotice, setShakeNotice] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [columnSelectorOpen, setColumnSelectorOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [requestsError, setRequestsError] = useState('');
+  const [requestsLoading, setRequestsLoading] = useState(false);
   const [openCardActionsId, setOpenCardActionsId] = useState<number | null>(null);
   const [openColumnActionsId, setOpenColumnActionsId] = useState<number | null>(null);
   const [assigningCard, setAssigningCard] = useState<Card | null>(null);
@@ -141,7 +155,7 @@ export default function Home() {
   const activeSession = useRef('');
   const pendingRef = useRef(false);
   const authBusyRef = useRef(false);
-  const signOut = useCallback(async () => { const previous=activeSession.current; activeSession.current=''; await pushWork.current.catch(()=>{}); if(previous) await unregisterPush(previous).catch(()=>{}); await SecureStore.deleteItemAsync(TOKEN_KEY); setToken(''); setUser(null); setBoard(null); setBoards([]); setForm(null); setMovingCard(null); setOpenCardActionsId(null); setOpenColumnActionsId(null); setAssigningCard(null); setViewingCardId(null); setScreen('boards'); setRestoringToken(''); setMessage(''); setNotifications([]); setPushPermission('unavailable'); }, []);
+  const signOut = useCallback(async () => { const previous=activeSession.current; activeSession.current=''; await pushWork.current.catch(()=>{}); if(previous) await unregisterPush(previous).catch(()=>{}); await SecureStore.deleteItemAsync(TOKEN_KEY); setToken(''); setUser(null); setBoard(null); setBoards([]); setForm(null); setMovingCard(null); setOpenCardActionsId(null); setOpenColumnActionsId(null); setAssigningCard(null); setViewingCardId(null); setScreen('boards'); setRestoringToken(''); setMessage(''); setNotifications([]); setPushPermission('unavailable'); setScannerOpen(false); setInviteCode(null); setJoinRequests([]); }, []);
   const restore = useCallback(async (saved: string) => {
     setLoading(true); setMessage('');
     try { const current = await api<User>('/auth/me', saved); setToken(saved); setUser(current); setRestoringToken(''); }
@@ -156,10 +170,14 @@ export default function Home() {
   const loadBoards = useCallback(async () => { const data = await request<Board[]>('/boards'); setBoards(data); }, [request]);
   const loadBoard = useCallback(async (id: number, resetSelection = false) => {
     const data = await request<BoardDetail>(`/boards/${id}`);
+    if (resetSelection) { setPriorities([...PRIORITIES]); setTicketSort('Recientes'); setShakeNotice(false); }
     setSelectedColumnId(current => !resetSelection && data.columns.some(column => column.column_id === current) ? current : data.columns[0]?.column_id ?? null);
     setBoard(data);
+    return data;
   }, [request]);
-  const loadNotifications = useCallback(async () => { setNotifications(await request<Notification[]>('/notifications')); }, [request]);
+  const loadNotifications = useCallback(async () => { const items=await request<Notification[]>('/notifications'); setNotifications(items); return items; }, [request]);
+  const loadJoinRequests = useCallback(async (boardId:number) => { setRequestsLoading(true); try { const items=await request<JoinRequest[]>(`/invitations/boards/${boardId}/requests`); setJoinRequests(items); setRequestsError(''); } finally { setRequestsLoading(false); } }, [request]);
+  useEffect(()=>{ if(screen!=='settings' || !board?.is_owner) return; setJoinRequests([]); setRequestsError(''); void loadJoinRequests(board.board_id).catch(e=>setRequestsError(e instanceof Error?e.message:'No se pudieron cargar las solicitudes.')); },[screen,board?.board_id,board?.is_owner,loadJoinRequests]);
   useEffect(() => {
     if (!token) return;
     activeSession.current=token;
@@ -202,15 +220,20 @@ export default function Home() {
   }, [loadNotifications]);
   const openNotification=useCallback(async (notificationId:number,boardId:number)=>{
     try {
+      const items=await request<Notification[]>('/notifications');
+      const item=items.find(note=>note.notification_id===notificationId);
+      if(!item) throw new ApiError('Notificación no encontrada',404);
       await request(`/notifications/${notificationId}/read`,'PUT');
       await loadNotifications();
-      await loadBoard(boardId,true);
+      if(item.kind==='join_rejected') {setBoard(null);setScreen('boards');await loadBoards();Alert.alert('Mindlog',item.message);return;}
+      const target=await loadBoard(item.board_id,true);
+      if(item.kind==='join_requested' && target.is_owner) {await loadJoinRequests(item.board_id);setScreen('settings');return;}
       setScreen('board');
     } catch(e) {
       if(e instanceof ApiError && (e.status===403 || e.status===404)) { setBoard(null);setScreen('boards');Alert.alert('Mindlog','Esta notificación o el tablero ya no están disponibles.'); }
       else Alert.alert('Mindlog',e instanceof Error ? e.message : 'No se pudo abrir la notificación');
     }
-  },[request,loadNotifications,loadBoard]);
+  },[request,loadNotifications,loadBoard,loadBoards,loadJoinRequests]);
   useEffect(()=>{if(user && token && pendingNotification){const item=pendingNotification;setPendingNotification(null);void openNotification(item.notificationId,item.boardId);}},[user,token,pendingNotification,openNotification]);
   const run = useCallback((fn: () => Promise<unknown>, message = 'Actualizando…') => {
     if (pendingRef.current) return;
@@ -221,6 +244,33 @@ export default function Home() {
       .finally(() => { pendingRef.current = false; setPendingMessage(null); });
   }, []);
   useEffect(() => { if (token) run(loadBoards, 'Cargando tableros…'); }, [token, loadBoards, run]);
+  useEffect(() => {
+    const subscription=AppState.addEventListener('change', state=>setAppActive(state==='active'));
+    return ()=>subscription.remove();
+  }, []);
+  useEffect(() => {
+    if (screen !== 'board' || !board || selectedColumnId === null || !appActive || form || movingCard || assigningCard || viewingCardId !== null || openCardActionsId !== null || openColumnActionsId !== null || columnSelectorOpen || filtersOpen || confirmOpen || pendingMessage) return;
+    let disposed=false;
+    let subscription: {remove:()=>void} | undefined;
+    let previousPeak=0, lastShake=0, aboveThreshold=false;
+    void Accelerometer.isAvailableAsync().then(available=>{
+      if (!available || disposed) return;
+      Accelerometer.setUpdateInterval(100);
+      subscription=Accelerometer.addListener(({x,y,z})=>{
+        const now=Date.now();
+        const high=Math.sqrt(x*x+y*y+z*z)>=2.2;
+        if (high && !aboveThreshold) {
+          if (previousPeak && now-previousPeak<=800 && now-lastShake>=2000) {
+            lastShake=now; previousPeak=0; setTicketSort('Fecha y prioridad'); setShakeNotice(true);
+          } else previousPeak=now;
+        }
+        aboveThreshold=high;
+      });
+    }).catch(()=>{});
+    return ()=>{ disposed=true;subscription?.remove(); };
+  }, [screen,board?.board_id,selectedColumnId,appActive,form,movingCard,assigningCard,viewingCardId,openCardActionsId,openColumnActionsId,columnSelectorOpen,filtersOpen,confirmOpen,pendingMessage]);
+  useEffect(()=>{if (!shakeNotice) return; const timeout=setTimeout(()=>setShakeNotice(false),3000);return ()=>clearTimeout(timeout);},[shakeNotice]);
+  useEffect(()=>{if(screen==='boards'){setPriorities([...PRIORITIES]);setTicketSort('Recientes');setShakeNotice(false);setFiltersOpen(false);}},[screen]);
   const goBack = useCallback(() => {
     setOpenCardActionsId(null);
     setOpenColumnActionsId(null);
@@ -238,40 +288,49 @@ export default function Home() {
       if (openCardActionsId !== null) { setOpenCardActionsId(null); return true; }
       if (openColumnActionsId !== null) { setOpenColumnActionsId(null); return true; }
       if (columnSelectorOpen) { setColumnSelectorOpen(false); return true; }
+      if (filtersOpen) { setFiltersOpen(false); return true; }
       if (!user || screen === 'boards') return false;
       goBack();
       return true;
     });
     return () => subscription.remove();
-  }, [user, screen, goBack, openCardActionsId, openColumnActionsId, columnSelectorOpen]);
+  }, [user, screen, goBack, openCardActionsId, openColumnActionsId, columnSelectorOpen, filtersOpen]);
   const login = async () => {
     if (authBusyRef.current) return; authBusyRef.current = true; setAuthBusy(true); setMessage('');
     try { const result = await api<{token: string; user: User}>(register ? '/auth/register' : '/auth/login', undefined, 'POST', { email, password, ...(register ? { username } : {}) }); await SecureStore.setItemAsync(TOKEN_KEY, result.token); setToken(result.token); setUser(result.user); setPassword(''); }
     catch(e) { setMessage(e instanceof Error ? e.message : 'Error al iniciar sesión'); } finally { authBusyRef.current = false; setAuthBusy(false); }
   };
-  const confirm = (title: string, description: string, onConfirm: () => void, action = 'Eliminar') => Alert.alert(title, description, [{text:'Cancelar', style:'cancel'}, {text:action, style:'destructive', onPress:onConfirm}]);
+  const confirm = (title: string, description: string, onConfirm: () => void, action = 'Eliminar') => { setConfirmOpen(true); Alert.alert(title, description, [{text:'Cancelar', style:'cancel', onPress:()=>setConfirmOpen(false)}, {text:action, style:'destructive', onPress:()=>{setConfirmOpen(false);onConfirm();}}], {onDismiss:()=>setConfirmOpen(false)}); };
   const openBoardForm = (item?: Board) => setForm({ title: item ? 'Editar tablero' : 'Nuevo tablero', fields: [{key:'title', label:'Título', value:item?.title}, {key:'description', label:'Descripción', value:item?.description ?? '', multiline:true}], submit: async values => { await request(item ? `/boards/${item.board_id}` : '/boards', item ? 'PUT':'POST', values); await loadBoards(); if(item) await loadBoard(item.board_id); } });
   const openColumnForm = (item?: Column) => { if(!board) return; setForm({ title: item ? 'Editar columna' : 'Nueva columna', fields:[{key:'title', label:'Título', value:item?.title}], submit:async values => { await request(`/boards/${board.board_id}/columns${item ? `/${item.column_id}` : ''}`,item?'PUT':'POST',values); await loadBoard(board.board_id); } }); };
   const openCardForm = (columnId: number, card?: Card) => { if(!board) return; setForm({ title:card?'Editar ticket':'Nuevo ticket', fields:[{key:'title',label:'Título',value:card?.title},{key:'description',label:'Descripción',value:card?.description ?? '',multiline:true},{key:'priority',label:'Prioridad',value:card?.priority ?? 'Media',options:PRIORITIES},{key:'due_date',label:'Fecha límite (opcional)',value:card?.due_date ?? '',kind:'date'}],submit:async values=>{ const path=card?`/boards/${board.board_id}/cards/${card.card_id}`:`/boards/${board.board_id}/columns/${columnId}/cards`; await request(path,card?'PUT':'POST',{...values,...(card?{column_id:card.column_id}:{})});await loadBoard(board.board_id); } }); };
   const moveCard = (card: Card) => setMovingCard(card);
   const actionCard = board?.cards.find(card => card.card_id === openCardActionsId);
   const actionColumn = board?.columns.find(column => column.column_id === openColumnActionsId);
+  const visibleCards = board ? selectTickets(board.cards, selectedColumnId, priorities, ticketSort) : [];
+  const unreadCount = notifications.filter(item => !item.read_at).length;
   const viewedMembers = viewingCardId !== null && board ? board.members.filter(member => board.assignments.some(assignment => assignment.card_id === viewingCardId && assignment.user_id === member.user_id)) : null;
   if (loading) return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', gap: 12 }} accessibilityRole="progressbar" accessibilityLabel="Preparando sesión"><ActivityIndicator color="black" /><Text className="text-black">Preparando sesión…</Text></SafeAreaView>;
   if (restoringToken) return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff', justifyContent: 'center', gap: 16, padding: 24 }}><Text className="text-black">{message}</Text><Button title="Reintentar" onPress={()=>{void restore(restoringToken);}}/><Button title="Cerrar sesión" outline onPress={()=>{void signOut();}}/></SafeAreaView>;
   if (!user) return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{padding:24,gap:16,flexGrow:1,justifyContent:'center'}}><View className="h-16 w-16 self-center"><Logo /></View><Text className="text-center text-3xl font-bold text-black">Mindlog</Text><Text className="text-center text-black">{register?'Crea tu cuenta':'Organiza tus ideas y tareas'}</Text>{register&&<FieldInput label="Nombre" value={username} onChange={setUsername} editable={!authBusy}/>}<FieldInput label="Correo" value={email} onChange={setEmail} keyboard="email-address" editable={!authBusy}/><FieldInput label="Contraseña" value={password} onChange={setPassword} secret editable={!authBusy}/>{!!message&&<Text accessibilityRole="alert" className="text-black">{message}</Text>}<Button title={authBusy?'Espera…':register?'Crear cuenta':'Iniciar sesión'} loading={authBusy} onPress={()=>{void login();}}/><Button title={register?'Ya tengo una cuenta':'Crear una cuenta'} outline disabled={authBusy} onPress={()=>{setRegister(!register);setMessage('');}}/></ScrollView></SafeAreaView>;
   return <SafeAreaView style={{ flex: 1, backgroundColor: '#ffffff' }}><ScrollView importantForAccessibility={pendingMessage || openCardActionsId !== null || openColumnActionsId !== null ? 'no-hide-descendants' : 'auto'} contentContainerStyle={{padding:20,gap:16}}>
-   <View className="flex-row items-center justify-between">{screen!=='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={8} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 8 }} onPress={goBack}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M15 5 8 12l7 7" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable>}<Text className="flex-1 text-2xl font-bold text-black">{screen==='board' ? board?.title : screen==='settings'?'Configuración del tablero':screen==='members'?'Integrantes':screen==='notifications'?'Notificaciones':screen==='profile'?'Mi perfil':'Mis tableros'}</Text>{screen==='board'&&board&&<Pressable accessibilityRole="button" accessibilityLabel="Más opciones del tablero" hitSlop={8} className="ml-3 px-2" onPress={()=>{setColumnSelectorOpen(false);setOpenCardActionsId(null);setScreen(board.is_owner?'settings':'members');}}><Text className="text-3xl font-bold text-black">⋯</Text></Pressable>}{screen==='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Notificaciones" className="mr-4" onPress={()=>{setScreen('notifications');run(loadNotifications,'Cargando notificaciones…');}}><Text className="font-semibold text-black underline">Notificaciones{notifications.some(item=>!item.read_at)?' •':''}</Text></Pressable>}{screen==='boards'&&<Pressable accessibilityRole="button" onPress={()=>setScreen('profile')}><Text className="font-semibold text-black underline">Perfil</Text></Pressable>}</View>
+   <View className="flex-row items-center justify-between">{screen!=='boards'&&<Pressable accessibilityRole="button" accessibilityLabel="Volver" hitSlop={8} style={{ width: 36, height: 36, alignItems: 'center', justifyContent: 'center', marginRight: 8 }} onPress={goBack}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M15 5 8 12l7 7" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable>}<Text className="flex-1 text-2xl font-bold text-black">{screen==='board' ? board?.title : screen==='settings'?'Configuración del tablero':screen==='members'?'Integrantes':screen==='notifications'?'Notificaciones':screen==='profile'?'Mi perfil':'Mis tableros'}</Text>{screen==='board'&&board&&<Pressable accessibilityRole="button" accessibilityLabel="Más opciones del tablero" hitSlop={8} className="ml-3 px-2" onPress={()=>{setColumnSelectorOpen(false);setOpenCardActionsId(null);setScreen(board.is_owner?'settings':'members');}}><Text className="text-3xl font-bold text-black">⋯</Text></Pressable>}{screen==='boards'&&<View className="flex-row items-center gap-2"><Pressable accessibilityRole="button" accessibilityLabel={unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'} onPress={()=>{setScreen('notifications');run(loadNotifications,'Cargando notificaciones…');}} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4" stroke="#000000" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></Svg>{unreadCount>0&&<View accessible={false} style={{position:'absolute',top:0,right:0,minWidth:19,height:19,paddingHorizontal:4,borderRadius:10,backgroundColor:'#000000',alignItems:'center',justifyContent:'center'}}><Text style={{color:'#ffffff',fontSize:10,fontWeight:'700'}}>{unreadCount>99?'99+':unreadCount}</Text></View>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel="Perfil" onPress={()=>setScreen('profile')} style={{width:44,height:44,alignItems:'center',justifyContent:'center'}}><Svg width={24} height={24} viewBox="0 0 24 24" fill="none"><Path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 20a8 8 0 0 1 16 0" stroke="#000000" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable></View>}</View>
    {screen==='profile' && <><Text className="text-base text-black">{user.username}{'\n'}{user.email}</Text><Button title="Editar perfil" outline onPress={()=>setForm({title:'Editar perfil',fields:[{key:'username',label:'Nombre',value:user.username},{key:'email',label:'Correo',value:user.email,keyboard:'email-address'}],submit:async values=>{const updated=await request<User>('/auth/me','PUT',values);setUser(updated);}})}/><Button title="Cerrar sesión" onPress={()=>run(signOut)}/></>}
-   {screen==='boards' && <><Button title="Crear tablero" onPress={()=>openBoardForm()}/>{boards.length===0&&!pendingMessage&&<Text className="text-black">Aún no tienes tableros.</Text>}{boards.map(item=><Pressable key={item.board_id} className="gap-2 rounded-xl border border-neutral-300 p-4" onPress={()=>run(async()=>{await loadBoard(item.board_id,true);setColumnSelectorOpen(false);setScreen('board');},'Abriendo tablero…')}><Text className="text-lg font-bold text-black">{item.title}</Text><Text className="text-black">{item.description || 'Sin descripción'}</Text><Text className="text-neutral-600">{item.is_owner?'Propio':'Compartido'}</Text></Pressable>)}</>}
+   {screen==='boards' && <><Button title="Escanear QR para unirme" outline onPress={()=>setScannerOpen(true)}/><Button title="Crear tablero" onPress={()=>openBoardForm()}/>{boards.length===0&&!pendingMessage&&<Text className="text-black">Aún no tienes tableros.</Text>}{boards.map(item=><Pressable key={item.board_id} className="gap-2 rounded-xl border border-neutral-300 p-4" onPress={()=>run(async()=>{await loadBoard(item.board_id,true);setColumnSelectorOpen(false);setScreen('board');},'Abriendo tablero…')}><Text className="text-lg font-bold text-black">{item.title}</Text><Text className="text-black">{item.description || 'Sin descripción'}</Text><Text className="text-neutral-600">{item.is_owner?'Propio':'Compartido'}</Text></Pressable>)}</>}
    {screen==='settings' && board && !!board.is_owner && <>
     <Text className="text-black">{board.title}</Text>
     <Text className="text-black">{board.description || 'Sin descripción'}</Text>
     <Button title="Editar tablero" outline onPress={()=>openBoardForm(board)}/>
     <Button title="Eliminar tablero" outline onPress={()=>confirm('Eliminar tablero','Se eliminarán todas sus columnas y tickets.',()=>run(async()=>{await request(`/boards/${board.board_id}`,'DELETE');setBoard(null);setScreen('boards');await loadBoards();}))}/>
+    <Button title="Mostrar QR de invitación" outline onPress={()=>run(async()=>{const data=await request<{code:string}>(`/invitations/boards/${board.board_id}/code`);setInviteCode(data.code);},'Cargando código…')}/>
+    <Text className="text-xl font-bold text-black">Solicitudes de unión</Text>
+    {!!requestsError && <View className="gap-2"><Text accessibilityRole="alert" className="text-black">{requestsError}</Text><Button title="Reintentar" outline onPress={()=>run(()=>loadJoinRequests(board.board_id))}/></View>}
+    {requestsLoading && <ActivityIndicator color="black" accessibilityLabel="Cargando solicitudes"/>}
+    {!requestsLoading && !requestsError && joinRequests.length===0 && <Text className="text-black">No hay solicitudes pendientes.</Text>}
+    {joinRequests.map(item=><View key={item.request_id} className="gap-2 rounded-lg border border-neutral-300 p-3"><Text className="font-semibold text-black">{item.username}</Text><Text className="text-black">{item.email}</Text><View className="flex-row gap-4"><Pressable accessibilityRole="button" onPress={()=>run(async()=>{await request(`/invitations/boards/${board.board_id}/requests/${item.request_id}`,'PUT',{decision:'accept'});await loadJoinRequests(board.board_id);await loadBoard(board.board_id);})}><Text className="font-semibold text-black underline">Aceptar</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>run(async()=>{await request(`/invitations/boards/${board.board_id}/requests/${item.request_id}`,'PUT',{decision:'reject'});await loadJoinRequests(board.board_id);})}><Text className="font-semibold text-black underline">Rechazar</Text></Pressable></View></View>)}
     <Text className="text-xl font-bold text-black">Integrantes</Text>
     {board.members.map(member=><View key={member.user_id} className="flex-row items-center justify-between gap-2"><Text className="flex-1 text-black">{member.username} · {member.email}{member.is_owner?' (dueño)':''}</Text>{!member.is_owner&&<Pressable onPress={()=>confirm('Retirar integrante',`Retirar a ${member.username} también elimina sus asignaciones.`,()=>run(async()=>{await request(`/boards/${board.board_id}/members/${member.user_id}`,'DELETE');await loadBoard(board.board_id);} ))}><Text className="text-black underline">Retirar</Text></Pressable>}</View>)}
-    <Button title="Agregar integrante" outline onPress={()=>setForm({title:'Agregar integrante',fields:[{key:'email',label:'Correo de usuario registrado',keyboard:'email-address'}],submit:async values=>{await request(`/boards/${board.board_id}/members`,'POST',values);await loadBoard(board.board_id);}})}/>
+    <Button title="Agregar integrante" outline onPress={()=>setForm({title:'Agregar integrante',fields:[{key:'email',label:'Correo de usuario registrado',keyboard:'email-address'}],submit:async values=>{await request(`/boards/${board.board_id}/members`,'POST',values);await loadBoard(board.board_id);await loadJoinRequests(board.board_id);}})}/>
    </>}
    {screen==='notifications' && <>
     {pushPermission==='active' && <Text className="text-black">Los avisos están activados en este dispositivo.</Text>}
@@ -289,12 +348,25 @@ export default function Home() {
    </>}
    {screen==='board' && board && <>
     {board.columns.length===0&&<><Text className="text-black">No tienes ninguna columna existente.</Text><Button title="Crear columna" onPress={()=>openColumnForm()}/></>}
+    {board.columns.length>0 && <View className="gap-3 rounded-xl border border-neutral-300 bg-white p-4">
+     <Pressable accessibilityRole="button" accessibilityLabel="Filtros y orden" accessibilityState={{expanded:filtersOpen}} onPress={()=>setFiltersOpen(open=>!open)} className="flex-row items-center justify-between"><Text className="text-lg font-bold text-black">Filtros y orden</Text><Svg width={20} height={20} viewBox="0 0 24 24" fill="none"><Path d={filtersOpen?'m6 15 6-6 6 6':'m6 9 6 6 6-6'} stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable>
+     {filtersOpen && <View className="gap-3">
+     <Text className="font-semibold text-black">Prioridad</Text>
+     <View className="flex-row flex-wrap gap-2">{PRIORITIES.map(priority=>{const checked=priorities.includes(priority);return <Pressable key={priority} accessibilityRole="checkbox" accessibilityState={{checked}} onPress={()=>setPriorities(current=>checked?current.filter(item=>item!==priority):[...current,priority])} className={`rounded-lg border px-3 py-2 ${checked?'border-black bg-neutral-100':'border-neutral-300 bg-white'}`}><Text className="text-black">{priority}</Text></Pressable>;})}</View>
+     <Text className="font-semibold text-black">Ordenar por</Text>
+     <View accessibilityRole="radiogroup" className="flex-row flex-wrap gap-2">{SORT_OPTIONS.map(option=><Pressable key={option} accessibilityRole="radio" accessibilityState={{checked:ticketSort===option}} onPress={()=>{setTicketSort(option);setShakeNotice(false);}} className={`rounded-lg border px-3 py-2 ${ticketSort===option?'border-black bg-neutral-100':'border-neutral-300 bg-white'}`}><Text className="text-black">{option}</Text></Pressable>)}</View>
+     {ticketSort==='Fecha y prioridad' && <Text className="text-neutral-600">Orden actual: fecha y prioridad (gesto).</Text>}
+     <Text className="text-sm text-neutral-600">Agita el teléfono para ordenar por fecha y prioridad.</Text>
+     </View>}
+     {shakeNotice && <Text accessibilityRole="alert" className="font-semibold text-black">Orden aplicado: fecha y prioridad.</Text>}
+    </View>}
     {board.columns.filter(column=>column.column_id===selectedColumnId).map(column=><View key={column.column_id} className="gap-3 rounded-xl border border-neutral-300 bg-white p-4">
      <View className="flex-row items-center gap-2"><Pressable accessibilityRole="combobox" accessibilityLabel={`Columna ${column.title}, seleccionar columna`} accessibilityState={{expanded:columnSelectorOpen}} className="flex-1 flex-row items-center gap-2" onPress={()=>setColumnSelectorOpen(open=>!open)}><Text className="flex-shrink text-lg font-bold text-black">{column.title}</Text><Svg width={20} height={20} viewBox="0 0 24 24" fill="none"><Path d={columnSelectorOpen?'m6 15 6-6 6 6':'m6 9 6 6 6-6'} stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Opciones de la columna ${column.title}`} accessibilityState={{expanded:openColumnActionsId===column.column_id}} hitSlop={8} className="px-2" onPress={()=>{setColumnSelectorOpen(false);setOpenCardActionsId(null);setOpenColumnActionsId(column.column_id);}}><Text className="text-2xl font-bold text-black">⋯</Text></Pressable></View>
      {columnSelectorOpen&&<View className="border-t border-neutral-200 pt-2"><ScrollView nestedScrollEnabled style={{ maxHeight: 240 }} keyboardShouldPersistTaps="handled">{board.columns.map(option=><Pressable key={option.column_id} accessibilityRole="radio" accessibilityState={{checked:option.column_id===selectedColumnId}} className={`flex-row items-center gap-3 rounded-lg px-3 py-3 ${option.column_id===selectedColumnId?'bg-neutral-100':'bg-white'}`} onPress={()=>{setSelectedColumnId(option.column_id);setColumnSelectorOpen(false);setOpenCardActionsId(null);setOpenColumnActionsId(null);}}><Text className="flex-1 text-black">{option.title}</Text>{option.column_id===selectedColumnId&&<Svg width={20} height={20} viewBox="0 0 24 24" fill="none"><Path d="m5 12 4 4L19 6" stroke="#000000" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>}</Pressable>)}<Pressable accessibilityRole="button" className="flex-row items-center gap-2 rounded-lg px-3 py-3" onPress={()=>{setColumnSelectorOpen(false);openColumnForm();}}><Svg width={18} height={18} viewBox="0 0 24 24" fill="none"><Path d="M12 5v14M5 12h14" stroke="#000000" strokeWidth={2} strokeLinecap="round" /></Svg><Text className="font-semibold text-black">Añadir nueva columna</Text></Pressable></ScrollView></View>}
      <Pressable accessibilityRole="button" accessibilityLabel="Crear ticket" onPress={()=>openCardForm(column.column_id)} style={{ alignSelf: 'stretch', flexDirection: 'row', gap: 8, backgroundColor: '#000000', borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingVertical: 12 }}><Svg width={20} height={20} viewBox="0 0 24 24" fill="none"><Path d="M12 5v14M5 12h14" stroke="#ffffff" strokeWidth={2} strokeLinecap="round" /></Svg><Text style={{ color: '#ffffff', fontWeight: '600' }}>Crear ticket</Text></Pressable>
      {!board.cards.some(card=>card.column_id===column.column_id)&&<Text className="text-black">Esta columna aún no tiene tickets.</Text>}
-     {board.cards.filter(card=>card.column_id===column.column_id).map(card=>{
+     {board.cards.some(card=>card.column_id===column.column_id) && visibleCards.length===0 && <View className="gap-2"><Text className="text-black">No hay tickets para las prioridades seleccionadas.</Text><Button title="Restablecer prioridades" outline onPress={()=>setPriorities([...PRIORITIES])}/></View>}
+     {visibleCards.map(card=>{
       const count = board.assignments.filter(assignment=>assignment.card_id===card.card_id).length;
       return <View key={card.card_id} className="gap-2 rounded-lg border border-neutral-300 bg-white p-3">
        <View className="flex-row items-center justify-between"><Text className="flex-1 font-bold text-black">{card.title}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Opciones de ${card.title}`} accessibilityState={{expanded:openCardActionsId===card.card_id}} hitSlop={8} className="px-2" onPress={()=>setOpenCardActionsId(card.card_id)}><Text className="text-2xl font-bold text-black">⋯</Text></Pressable></View>
@@ -325,6 +397,8 @@ export default function Home() {
     </View>
   </View>}
   {pendingMessage&&<View accessibilityViewIsModal accessibilityRole="progressbar" accessibilityLabel={pendingMessage} style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center', gap: 12 }}><ActivityIndicator color="#000000" size="large" /><Text className="text-black">{pendingMessage}</Text></View>}
+  {scannerOpen && <JoinScanner close={()=>setScannerOpen(false)} preview={code=>request('/invitations/preview','POST',{code})} submit={code=>request('/invitations/requests','POST',{code})}/>}
+  <CenteredModal visible={inviteCode!==null} close={()=>setInviteCode(null)}><Text className="text-xl font-bold text-black">Invitación al tablero</Text><Text className="text-black">La persona interesada debe escanear este código desde Mindlog y solicitar unirse.</Text>{inviteCode && <View style={{alignItems:'center',padding:16,backgroundColor:'#ffffff'}}><QRCode value={`mindlog:join:${inviteCode}`} size={220}/></View>}<Button title="Regenerar QR" outline onPress={()=>{if(!board)return;confirm('Regenerar QR','El código anterior dejará de funcionar. Las solicitudes pendientes se conservarán.',()=>run(async()=>{const data=await request<{code:string}>(`/invitations/boards/${board.board_id}/code`,'PUT');setInviteCode(data.code);}));}}/><Button title="Cerrar" outline onPress={()=>setInviteCode(null)}/></CenteredModal>
   <FormModal form={form} close={()=>setForm(null)}/>
   {assigningCard && board && <AssignMembersModal card={assigningCard} board={board} close={()=>setAssigningCard(null)} save={async(cardId,userIds)=>{await request(`/boards/${board.board_id}/cards/${cardId}/assignments`,'PUT',{user_ids:userIds});await loadBoard(board.board_id);}}/>}
   <AssignedMembersModal members={viewedMembers} close={()=>setViewingCardId(null)}/>

@@ -77,7 +77,7 @@ EXPO_PUBLIC_PROD_API_URL=https://tu-api.vercel.app
 Desde `apps/mobile`, instala las dependencias con `pnpm install` si es necesario e inicia:
 
 ```sh
-pnpm start -- --api=prod
+pnpm start
 ```
 
 Abre la Development Build instalada y conecta con Metro mediante el QR. Comprueba el acceso y los tableros. Reinicia este comando después de cambiar la URL. Las variables `EXPO_PUBLIC_*` son públicas: nunca coloques tokens de Turso ni el secreto JWT en ellas.
@@ -89,7 +89,7 @@ Abre la Development Build instalada y conecta con Metro mediante el QR. Comprueb
 - Si aparece `NODE_TYPESCRIPT_ERROR` para archivos de `../mobile`, confirma que el directorio raíz sea `apps/api`, que la inclusión de archivos fuera del directorio raíz esté desactivada y que el despliegue incluya el `vercel.json` actual. Este excluye `mobile` del rastreo de la función; el build local de la API solo incluye `src/**/*.ts`. El error puede producirse en la fase posterior de empaquetado de Vercel. Si continúa, revisa los registros del nuevo despliegue.
 - Si `/health` falla, revisa el estado del despliegue y los registros de la función. Si responde pero falla el acceso o la creación de tableros, revisa las variables del entorno correcto, el token y las migraciones de la base; `JWT_SECRET` debe tener al menos 32 bytes.
 - Si `/docs` o `/openapi.json` fallan, revisa los registros y que `apps/api/vercel.json` se haya incluido: conserva los archivos fuente necesarios para generar OpenAPI.
-- Si la app no se conecta, comprueba que usa la URL HTTPS correcta, que el despliegue es accesible desde el dispositivo y que Expo se reinició con `--api=prod`.
+- Si la app no se conecta, comprueba que usa la URL HTTPS correcta, que el despliegue es accesible desde el dispositivo y que Expo se reinició después de cambiar la URL.
 
 Referencias: [Express en Vercel](https://vercel.com/docs/frameworks/backend/express) y [entornos de Vercel](https://vercel.com/docs/deployments/environments).
 
@@ -102,16 +102,16 @@ Desde `apps/mobile`, instala con `pnpm install`. Se usa la CLI local de Expo a t
 1. Con una cuenta Expo, ejecuta `pnpm dlx eas-cli login` y `pnpm dlx eas-cli init` para vincular el proyecto y obtener `extra.eas.projectId` en `app.json`. El paquete Android actual es `com.mindlog.app`; antes de distribuir, elige un identificador propio y usa exactamente el mismo en Firebase. Los dos perfiles comparten identificador y firma: instalar uno puede reemplazar al otro en el mismo teléfono.
 2. Crea en Firebase una aplicación Android con ese identificador y descarga `google-services.json`. El archivo está excluido de Git. Configura `GOOGLE_SERVICES_JSON` como variable de archivo secreta en **ambos** entornos EAS, `development` y `preview`. Para un build local puede apuntar a la ruta local. Consulta [variables de entorno EAS](https://docs.expo.dev/eas/environment-variables/).
 3. Configura la credencial de cuenta de servicio FCM HTTP v1 del mismo proyecto Firebase en EAS con `pnpm dlx eas-cli credentials`, siguiendo la [guía de Expo](https://docs.expo.dev/push-notifications/fcm-credentials/). La clave privada no debe añadirse al repositorio ni al bundle. Configura también la firma Android mediante EAS cuando lo solicite.
-4. Aplica explícitamente las migraciones de la API a una base de pruebas y despliega la API de pruebas. En el entorno EAS `preview`, define `EXPO_PUBLIC_PROD_API_URL` con su URL HTTPS accesible desde los teléfonos. El perfil fija `EXPO_PUBLIC_API_ENV=prod`; aquí `prod` selecciona esa variable y no exige usar la base de producción. No uses `localhost`, una IP privada inaccesible ni datos de producción. Las variables `EXPO_PUBLIC_*` son públicas y quedan incluidas en el bundle.
+4. Aplica explícitamente las migraciones de la API a una base de pruebas y despliega la API de pruebas. En los entornos EAS `development` y `preview`, define `EXPO_PUBLIC_PROD_API_URL` con la URL HTTPS desplegada y accesible desde los teléfonos. Recuerda que las operaciones de prueba modificarán la base vinculada a esa API. Las variables `EXPO_PUBLIC_*` son públicas y quedan incluidas en el bundle.
 
 ### Development Build
 
 ```sh
 pnpm dlx eas-cli build --platform android --profile development
-pnpm start -- --api=dev
+pnpm start
 ```
 
-Instala el APK generado en tu Android, abre la Development Build y conecta al Metro de Ubuntu mediante el QR. El teléfono debe poder alcanzar Metro y la API: usa la misma red y una IP LAN válida en `EXPO_PUBLIC_DEV_API_URL`; `localhost` en el teléfono apunta al propio teléfono. Para elegir la URL HTTPS configurada en `EXPO_PUBLIC_PROD_API_URL`, usa `pnpm start -- --api=prod`. Metro usa las variables locales de `.env`, no las del build EAS. Puedes pasar `--tunnel` si la red lo necesita y tienes disponible el soporte de túnel de Expo. Reinicia Metro tras cambiar variables; `--clear` está disponible cuando necesites limpiar caché.
+Instala el APK generado en tu Android, abre la Development Build y conecta al Metro de Ubuntu mediante el QR. El teléfono debe poder alcanzar Metro y la API: conecta el teléfono y Ubuntu a la misma red para Metro y configura en `.env` la URL desplegada en `EXPO_PUBLIC_PROD_API_URL`. Metro usa las variables locales de `.env`, no las del build EAS. Puedes pasar `--tunnel` si la red lo necesita y tienes disponible el soporte de túnel de Expo. Reinicia Metro tras cambiar variables; `--clear` está disponible cuando necesites limpiar caché.
 
 ### APK preview para el equipo
 
@@ -119,7 +119,7 @@ Instala el APK generado en tu Android, abre la Development Build y conecta al Me
 pnpm dlx eas-cli build --platform android --profile preview
 ```
 
-Descarga el APK o comparte el enlace de instalación de la página del build EAS con los integrantes autorizados. En Android puede ser necesario permitir instalar aplicaciones desde el navegador o gestor de archivos. Cada persona instala el APK, inicia sesión y concede el permiso de notificaciones; no necesita Metro. Antes de distribuir, comprueba que el entorno `preview` contiene la URL pública de la API de pruebas y el archivo Firebase correcto. `pnpm exec expo config --type public` permite revisar la configuración pública local, pero no acredita las variables secretas de EAS.
+Descarga el APK o comparte el enlace de instalación de la página del build EAS con los integrantes autorizados. En Android puede ser necesario permitir instalar aplicaciones desde el navegador o gestor de archivos. Cada persona instala el APK, inicia sesión y concede el permiso de notificaciones; no necesita Metro. Antes de distribuir, comprueba que el entorno `preview` contiene la URL desplegada de la API y el archivo Firebase correcto. `pnpm exec expo config --type public` permite revisar la configuración pública local, pero no acredita las variables secretas de EAS.
 
 ### Cuándo recompilar
 
@@ -131,3 +131,20 @@ Descarga el APK o comparte el enlace de instalación de la página del build EAS
 En dos dispositivos físicos compatibles con servicios de Google y conectados a internet, inicia sesión con cuentas distintas y concede el permiso. Agrega una cuenta al tablero y asígnale un ticket desde la otra; comprueba el aviso con la app abierta, en segundo plano y cerrada, la bandeja y la apertura del tablero. Prueba también permisos denegados o desactivados, cierre de sesión y cambio de cuenta. Android puede retrasar o impedir entregas por conectividad, restricciones de batería y estado de la aplicación; Expo no garantiza entrega ni unicidad. El backend evita duplicar registros para el mismo token y la app sincroniza cambios de token, pero una reinstalación puede dejar un token anterior que no se puede asociar a la instalación nueva.
 
 El envío es inmediato y no usa cron ni otro backend. Se eliminan tokens rechazados en el ticket de respuesta; sin revisar comprobantes posteriores no se detectan todas las desinstalaciones o invalidaciones. El historial se conserva aunque falle el push. Revisa registros de Vercel y configuración FCM si no llega el aviso; la aceptación por Expo no confirma la entrega.
+
+Para probar el gesto de orden, instala una nueva build con `expo-sensors`. En la Development Build y Expo Go, sacudir puede abrir el menú de desarrollo; comprueba el comportamiento final en un APK preview.
+
+### Compilar una Development Build localmente en Ubuntu
+
+El proyecto usa generación nativa de Expo y excluye `apps/mobile/android` e `ios` de Git para que EAS pueda generarlos de nuevo. Instala un JDK compatible y Android Studio con Android SDK, Platform-Tools y las plataformas y herramientas requeridas por Gradle; configura `ANDROID_HOME` y añade `platform-tools` al `PATH`. Consulta la [guía de Expo](https://docs.expo.dev/guides/local-app-development/). Conecta el teléfono por USB, activa la depuración USB y autoriza el equipo; comprueba la conexión con `adb devices`.
+
+Desde `apps/mobile`, con pnpm:
+
+```sh
+pnpm exec expo prebuild --clean --platform android --no-install
+pnpm exec expo run:android --device
+```
+
+`prebuild --clean` elimina y regenera la carpeta nativa: no conserva cambios manuales dentro de ella. Úsalo al añadir dependencias nativas o cambiar la configuración nativa; para cambios habituales de JavaScript usa `pnpm start` y Fast Refresh. `run:android` instala la build de depuración y normalmente inicia Metro; si Metro se detiene, vuelve a ejecutar `pnpm start`. Para notificaciones locales, el prebuild debe tener disponible el archivo de configuración Firebase mediante `GOOGLE_SERVICES_JSON`; las credenciales FCM para enviar push siguen configurándose en Expo Services.
+
+La función de solicitudes por QR requiere aplicar explícitamente `003_join_requests.sql` a la base de destino antes del despliegue y generar una nueva build móvil con `expo-camera`. Para la prueba, concede permiso a la cámara en el teléfono del solicitante y utiliza otro teléfono para mostrar el QR del dueño. Expo Go puede abrir las funciones compatibles; la entrega push requiere una build instalada.
